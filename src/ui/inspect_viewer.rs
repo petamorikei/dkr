@@ -1,0 +1,180 @@
+use ratatui::{
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    Frame,
+};
+use serde_json;
+
+#[derive(Clone)]
+pub struct InspectViewer {
+    pub title: String,
+    pub content: String,
+    pub scroll_position: u16,
+    pub max_scroll: u16,
+}
+
+impl InspectViewer {
+    pub fn new(title: String, data: serde_json::Value) -> Self {
+        let content = serde_json::to_string_pretty(&data)
+            .unwrap_or_else(|e| format!("Failed to format JSON: {}", e));
+        
+        let line_count = content.lines().count() as u16;
+        
+        Self {
+            title,
+            content,
+            scroll_position: 0,
+            max_scroll: line_count.saturating_sub(10), // Assuming ~10 lines visible
+        }
+    }
+
+    pub fn scroll_up(&mut self, amount: u16) {
+        self.scroll_position = self.scroll_position.saturating_sub(amount);
+    }
+
+    pub fn scroll_down(&mut self, amount: u16) {
+        self.scroll_position = (self.scroll_position + amount).min(self.max_scroll);
+    }
+
+    pub fn scroll_to_top(&mut self) {
+        self.scroll_position = 0;
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll_position = self.max_scroll;
+    }
+
+    pub fn page_up(&mut self, page_size: u16) {
+        self.scroll_up(page_size);
+    }
+
+    pub fn page_down(&mut self, page_size: u16) {
+        self.scroll_down(page_size);
+    }
+}
+
+pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),     // Content
+            Constraint::Length(2),  // Footer
+        ])
+        .split(area);
+
+    // Content with JSON
+    let lines: Vec<Line> = viewer.content
+        .lines()
+        .skip(viewer.scroll_position as usize)
+        .take(chunks[0].height as usize - 2) // Account for borders
+        .map(|line| {
+            // Basic JSON syntax highlighting
+            if line.trim_start().starts_with('"') {
+                // Key or string value
+                if line.contains(':') {
+                    // It's a key-value pair
+                    let parts: Vec<&str> = line.splitn(2, ':').collect();
+                    if parts.len() == 2 {
+                        let key = parts[0];
+                        let value = parts[1];
+                        Line::from(vec![
+                            Span::styled(key, Style::default().fg(Color::Cyan)),
+                            Span::raw(":"),
+                            Span::styled(value, Style::default().fg(Color::White)),
+                        ])
+                    } else {
+                        Line::from(line)
+                    }
+                } else {
+                    Line::styled(line, Style::default().fg(Color::Green))
+                }
+            } else if line.trim_start().starts_with('[') || line.trim_start().starts_with(']') ||
+                      line.trim_start().starts_with('{') || line.trim_start().starts_with('}') {
+                // Array or object brackets
+                Line::styled(line, Style::default().fg(Color::Yellow))
+            } else if line.contains("true") || line.contains("false") || line.contains("null") {
+                // Boolean or null values
+                Line::styled(line, Style::default().fg(Color::Magenta))
+            } else {
+                Line::from(line)
+            }
+        })
+        .collect();
+
+    let content = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} ", viewer.title))
+        )
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(content, chunks[0]);
+
+    // Scrollbar
+    let scrollbar = Scrollbar::default()
+        .orientation(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("↑"))
+        .end_symbol(Some("↓"));
+    
+    let mut scrollbar_state = ScrollbarState::default()
+        .content_length(viewer.content.lines().count())
+        .position(viewer.scroll_position as usize);
+
+    frame.render_stateful_widget(
+        scrollbar,
+        chunks[0].inner(&ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut scrollbar_state,
+    );
+
+    // Footer
+    let footer_text = vec![
+        Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Scroll  "),
+        Span::styled("[PgUp/PgDn]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Page  "),
+        Span::styled("[Home/End]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Top/Bottom  "),
+        Span::styled("[/]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Search  "),
+        Span::styled("[q]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Close"),
+    ];
+
+    let footer = Paragraph::new(Line::from(footer_text))
+        .block(Block::default().borders(Borders::ALL))
+        .alignment(Alignment::Center);
+
+    frame.render_widget(footer, chunks[1]);
+}
+
+pub fn draw_inspect_popup(frame: &mut Frame, viewer: &InspectViewer) {
+    let area = centered_rect(80, 80, frame.size());
+    frame.render_widget(Clear, area);
+    draw_inspect_viewer(frame, viewer, area);
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
