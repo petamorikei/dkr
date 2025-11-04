@@ -511,16 +511,14 @@ async fn handle_action(
                     if app.has_selection() {
                         // Use multi-selection
                         ids_to_delete = app.selected_items.iter().cloned().collect();
-                    } else {
-                        if let Some(response) = volumes {
-                            if let Some(vols) = &response.volumes {
-                                if app.selected_index >= vols.len() {
-                                    app.selected_index = vols.len().saturating_sub(1);
-                                }
-                                
-                                if let Some(volume) = vols.get(app.selected_index) {
-                                    ids_to_delete.push(volume.name.clone());
-                                }
+                    } else if let Some(response) = volumes {
+                        if let Some(vols) = &response.volumes {
+                            if app.selected_index >= vols.len() {
+                                app.selected_index = vols.len().saturating_sub(1);
+                            }
+
+                            if let Some(volume) = vols.get(app.selected_index) {
+                                ids_to_delete.push(volume.name.clone());
                             }
                         }
                     }
@@ -723,9 +721,8 @@ async fn handle_action(
                     }
                     
                     if let Some(network) = networks.get(app.selected_index) {
-                        let network_id = network.id.as_ref()
-                            .map(|s| s.clone())
-                            .unwrap_or_else(|| String::new());
+                        let network_id = network.id.clone()
+                            .unwrap_or_else(String::new);
                         
                         // Fetch network details
                         let details = {

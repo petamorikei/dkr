@@ -142,7 +142,7 @@ pub fn draw_images_tab(
                 .unwrap_or_else(|| "<none>".to_string());
             
             let parts: Vec<&str> = repo_tags.split(':').collect();
-            let repo = format!("{}{}", selected_mark, parts.get(0).unwrap_or(&"<none>"));
+            let repo = format!("{}{}", selected_mark, parts.first().unwrap_or(&"<none>"));
             let tag = parts.get(1).unwrap_or(&"<none>").to_string();
             
             let id = image.id
@@ -386,7 +386,7 @@ fn format_timestamp(timestamp: i64) -> String {
     }
     
     let dt = DateTime::<Utc>::from_timestamp(timestamp, 0)
-        .unwrap_or_else(|| Utc::now());
+        .unwrap_or_else(Utc::now);
     let local_dt: DateTime<Local> = dt.into();
     let now = Local::now();
     let duration = now.signed_duration_since(local_dt);

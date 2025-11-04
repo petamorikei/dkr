@@ -1,6 +1,7 @@
 use bollard::models::{ContainerInspectResponse, ContainerSummary as BollardContainer};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerSummary {
@@ -53,9 +54,13 @@ impl ContainerState {
             ContainerState::Unknown => "Unknown",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl FromStr for ContainerState {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "running" => ContainerState::Running,
             "paused" => ContainerState::Paused,
             "restarting" => ContainerState::Restarting,
@@ -63,7 +68,7 @@ impl ContainerState {
             "dead" => ContainerState::Dead,
             "created" => ContainerState::Created,
             _ => ContainerState::Unknown,
-        }
+        })
     }
 }
 
@@ -105,7 +110,7 @@ impl From<BollardContainer> for ContainerSummary {
             })
             .collect();
 
-        let state = ContainerState::from_str(container.state.as_deref().unwrap_or("unknown"));
+        let state = container.state.as_deref().unwrap_or("unknown").parse().unwrap_or(ContainerState::Unknown);
 
         Self {
             id: container.id.unwrap_or_default(),
@@ -129,7 +134,7 @@ impl From<ContainerInspectResponse> for ContainerInfo {
 
         let state_info = inspect.state.unwrap_or_default();
         let state = match &state_info.status {
-            Some(status) => ContainerState::from_str(&status.to_string()),
+            Some(status) => status.as_ref().parse().unwrap_or(ContainerState::Unknown),
             None => ContainerState::Unknown,
         };
 
@@ -138,7 +143,7 @@ impl From<ContainerInspectResponse> for ContainerInfo {
         let ports = if let Some(ref network_settings) = inspect.network_settings {
             if let Some(ports) = &network_settings.ports {
                 ports
-                    .into_iter()
+                    .iter()
                     .filter_map(|(port_proto, bindings)| {
                         let parts: Vec<&str> = port_proto.split('/').collect();
                         // Safely parse port with error handling
@@ -195,7 +200,7 @@ impl From<ContainerInspectResponse> for ContainerInfo {
             .created
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|| Utc::now());
+            .unwrap_or_else(Utc::now);
 
         let started_at = state_info
             .started_at
@@ -236,10 +241,10 @@ mod tests {
 
     #[test]
     fn test_container_state_conversion() {
-        assert_eq!(ContainerState::from_str("running"), ContainerState::Running);
-        assert_eq!(ContainerState::from_str("EXITED"), ContainerState::Exited);
-        assert_eq!(ContainerState::from_str("unknown"), ContainerState::Unknown);
-        
+        assert_eq!("running".parse::<ContainerState>().unwrap(), ContainerState::Running);
+        assert_eq!("EXITED".parse::<ContainerState>().unwrap(), ContainerState::Exited);
+        assert_eq!("unknown".parse::<ContainerState>().unwrap(), ContainerState::Unknown);
+
         assert_eq!(ContainerState::Running.as_str(), "Running");
         assert_eq!(ContainerState::Exited.as_str(), "Exited");
     }

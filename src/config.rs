@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -48,16 +48,6 @@ pub struct DockerConfig {
     pub socket: String,
     #[serde(default = "default_timeout")]
     pub timeout: u64,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            ui: UiConfig::default(),
-            docker: DockerConfig::default(),
-        }
-    }
 }
 
 impl Default for GeneralConfig {
@@ -183,7 +173,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.general.refresh_interval, 5);
-        assert_eq!(config.general.confirm_delete, true);
+        assert!(config.general.confirm_delete);
         assert_eq!(config.ui.theme, "dark");
         assert_eq!(config.ui.logs_buffer_size, 1000);
     }

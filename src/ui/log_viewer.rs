@@ -189,8 +189,7 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
     // Logs
     let log_items: Vec<ListItem> = viewer.logs
         .iter()
-        .enumerate()
-        .map(|(_i, log)| {
+        .map(|log| {
             let content = if let Some(ref term) = viewer.search_term {
                 if log.to_lowercase().contains(&term.to_lowercase()) {
                     // Highlight search term
