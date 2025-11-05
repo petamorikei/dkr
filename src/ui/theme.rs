@@ -1,4 +1,5 @@
 use ratatui::style::{Color, Modifier, Style};
+use crate::docker::ContainerState;
 
 /// Theme using only ANSI colors for maximum compatibility
 pub struct Theme {
@@ -20,6 +21,32 @@ impl Default for Theme {
 }
 
 impl Theme {
+    /// Create theme from config string
+    pub fn from_config(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            "ansi" => Self::ansi(),
+            "reversed" => Self::reversed(),
+            "minimal" => Self::minimal(),
+            _ => Self::default(),
+        }
+    }
+
+    /// Get color for container state
+    pub fn get_state_color(&self, state: &ContainerState) -> Color {
+        match state {
+            ContainerState::Running => {
+                self.running_style.fg.unwrap_or(Color::Green)
+            }
+            ContainerState::Paused => {
+                self.paused_style.fg.unwrap_or(Color::Yellow)
+            }
+            ContainerState::Exited | ContainerState::Dead => {
+                self.stopped_style.fg.unwrap_or(Color::Red)
+            }
+            _ => Color::Gray,
+        }
+    }
+
     /// Standard ANSI color theme
     pub fn ansi() -> Self {
         Self {

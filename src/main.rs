@@ -8,7 +8,8 @@ use dkr::App;
 use dkr::app::AppTab;
 use dkr::docker::ContainerSummary;
 use dkr::event::{handle_key_event, Action};
-use dkr::ui::{render, LogViewer, InspectViewer};
+use dkr::handlers;
+use dkr::ui::render;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::time::Duration;
@@ -98,8 +99,8 @@ async fn run_app<B: ratatui::backend::Backend>(
             }
             _ = tokio::time::timeout(Duration::from_millis(250), tokio::task::yield_now()) => {
                 // Check for keyboard events
-                if crossterm::event::poll(Duration::from_millis(0))? {
-                    if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
+                if crossterm::event::poll(Duration::from_millis(0))?
+                    && let crossterm::event::Event::Key(key) = crossterm::event::read()? {
                         if app.show_help {
                             app.show_help = false;
                             continue;
@@ -110,33 +111,10 @@ async fn run_app<B: ratatui::backend::Backend>(
                             use crossterm::event::KeyCode;
                             match key.code {
                                 KeyCode::Char('y') | KeyCode::Char('Y') => {
-                                    // Proceed with deletion based on current tab
-                                    let ids = app.pending_delete_ids.clone();
-                                    for id in ids {
-                                        let result = {
-                                            let docker = app.docker.lock().await;
-                                            match app.current_tab {
-                                                AppTab::Containers => docker.remove_container(&id, false).await,
-                                                AppTab::Images => docker.remove_image(&id, false).await,
-                                                AppTab::Volumes => docker.remove_volume(&id).await,
-                                                AppTab::Networks => docker.remove_network(&id).await,
-                                            }
-                                        };
-                                        if let Err(e) = result {
-                                            let item_type = match app.current_tab {
-                                                AppTab::Containers => "container",
-                                                AppTab::Images => "image",
-                                                AppTab::Volumes => "volume",
-                                                AppTab::Networks => "network",
-                                            };
-                                            app.set_error(format!("Failed to remove {} {}: {}", item_type, id, e));
-                                        }
-                                    }
-                                    app.pending_delete_ids.clear();
-                                    app.clear_selection();
+                                    // Proceed with deletion using handler
+                                    handlers::confirm_delete(app).await?;
                                     // Refresh data after deletion
                                     fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
-                                    app.show_confirm_delete = false;
                                 }
                                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                                     // Cancel deletion
@@ -192,6 +170,19 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                             continue;
                         }
+
+                        if app.show_stats {
+                            // Handle stats viewer keys
+                            use crossterm::event::KeyCode;
+                            match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    app.show_stats = false;
+                                    app.stats_viewer = None;
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
                         
                         if let Some(action) = handle_key_event(key) {
                             if !handle_action(app, action, &containers, &images, &volumes, &networks).await? {
@@ -205,7 +196,6 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                         }
                     }
-                }
             }
         }
 
@@ -264,13 +254,11 @@ async fn fetch_data(
             }
         }
         AppTab::Volumes => {
-            if let Some(response) = volumes {
-                if let Some(vols) = &response.volumes {
-                    if app.selected_index >= vols.len() && !vols.is_empty() {
+            if let Some(response) = volumes
+                && let Some(vols) = &response.volumes
+                    && app.selected_index >= vols.len() && !vols.is_empty() {
                         app.selected_index = vols.len() - 1;
                     }
-                }
-            }
         }
         AppTab::Networks => {
             if app.selected_index >= networks.len() && !networks.is_empty() {
@@ -305,494 +293,73 @@ async fn handle_action(
             app.quit();
             return Ok(false);
         }
-        Action::NextTab => {
-            app.next_tab();
-            return Ok(true); // Return early to trigger data fetch
-        }
-        Action::PreviousTab => {
-            app.previous_tab();
-            return Ok(true); // Return early to trigger data fetch
-        }
-        Action::SwitchToTab(index) => {
-            let tabs = AppTab::all();
-            if index < tabs.len() {
-                app.current_tab = tabs[index];
-                app.selected_index = 0;
-                app.clear_selection(); // Clear selection when switching tabs
-                return Ok(true); // Return early to trigger data fetch
-            }
-        }
-        Action::Up => {
-            if app.selected_index > 0 {
-                app.selected_index -= 1;
-            }
-        }
-        Action::Down => {
-            let max_items = match app.current_tab {
-                AppTab::Containers => containers.len(),
-                _ => 10, // Default for other tabs
-            };
-            app.select_next(max_items);
-        }
-        Action::PageUp => {
-            app.selected_index = app.selected_index.saturating_sub(10);
-        }
-        Action::PageDown => {
-            let max_items = match app.current_tab {
-                AppTab::Containers => containers.len(),
-                _ => 10,
-            };
-            app.selected_index = (app.selected_index + 10).min(max_items.saturating_sub(1));
-        }
-        Action::Home => app.select_first(),
-        Action::End => {
-            let max_items = match app.current_tab {
-                AppTab::Containers => containers.len(),
-                _ => 10,
-            };
-            app.select_last(max_items);
-        }
-        Action::MultiSelect => {
-            // Toggle selection for current item
-            match app.current_tab {
-                AppTab::Containers => {
-                    if let Some(container) = containers.get(app.selected_index) {
-                        app.toggle_selection(container.id.clone());
-                    }
-                }
-                AppTab::Images => {
-                    if let Some(image) = images.get(app.selected_index) {
-                        app.toggle_selection(image.id.clone());
-                    }
-                }
-                AppTab::Volumes => {
-                    if let Some(response) = volumes {
-                        if let Some(vols) = &response.volumes {
-                            if let Some(volume) = vols.get(app.selected_index) {
-                                app.toggle_selection(volume.name.clone());
-                            }
-                        }
-                    }
-                }
-                AppTab::Networks => {
-                    if let Some(network) = networks.get(app.selected_index) {
-                        if let Some(id) = &network.id {
-                            app.toggle_selection(id.clone());
-                        }
-                    }
-                }
-            }
-        }
-        Action::StartStop => {
-            if app.current_tab == AppTab::Containers {
-                // Ensure selected_index is within bounds
-                if app.selected_index >= containers.len() {
-                    app.selected_index = containers.len().saturating_sub(1);
-                }
-                
-                if let Some(container) = containers.get(app.selected_index) {
-                    let result = {
-                        let docker = app.docker.lock().await;
-                        if container.state == dkr::docker::ContainerState::Running {
-                            docker.stop_container(&container.id).await
-                        } else {
-                            docker.start_container(&container.id).await
-                        }
-                    };
-                    
-                    if let Err(e) = result {
-                        app.set_error(format!("Operation failed: {}", e));
-                    }
-                }
-            }
-        }
-        Action::Restart => {
-            if app.current_tab == AppTab::Containers {
-                // Ensure selected_index is within bounds
-                if app.selected_index >= containers.len() {
-                    app.selected_index = containers.len().saturating_sub(1);
-                }
-                
-                if let Some(container) = containers.get(app.selected_index) {
-                    let result = {
-                        let docker = app.docker.lock().await;
-                        docker.restart_container(&container.id).await
-                    };
-                    if let Err(e) = result {
-                        app.set_error(format!("Failed to restart container: {}", e));
-                    }
-                }
-            }
-        }
-        Action::Delete => {
-            match app.current_tab {
-                AppTab::Containers => {
-                    // Prepare list of items to delete
-                    let mut ids_to_delete = Vec::new();
-                    
-                    if app.has_selection() {
-                        // Use multi-selection
-                        ids_to_delete = app.selected_items.iter().cloned().collect();
-                    } else {
-                        // Use single selection
-                        if app.selected_index >= containers.len() {
-                            app.selected_index = containers.len().saturating_sub(1);
-                        }
-                        
-                        if let Some(container) = containers.get(app.selected_index) {
-                            ids_to_delete.push(container.id.clone());
-                        }
-                    }
-                    
-                    if !ids_to_delete.is_empty() {
-                        // Check if confirmation is enabled in config
-                        if app.config.general.confirm_delete {
-                            // Show confirmation dialog
-                            app.show_confirm_delete = true;
-                            app.pending_delete_ids = ids_to_delete;
-                        } else {
-                            // Delete without confirmation
-                            for id in ids_to_delete {
-                                let result = {
-                                    let docker = app.docker.lock().await;
-                                    docker.remove_container(&id, false).await
-                                };
-                                if let Err(e) = result {
-                                    app.set_error(format!("Failed to remove container {}: {}", id, e));
-                                }
-                            }
-                            app.clear_selection();
-                        }
-                    }
-                }
-                AppTab::Images => {
-                    // Prepare list of items to delete
-                    let mut ids_to_delete = Vec::new();
-                    
-                    if app.has_selection() {
-                        // Use multi-selection
-                        ids_to_delete = app.selected_items.iter().cloned().collect();
-                    } else {
-                        // Use single selection
-                        if app.selected_index >= images.len() {
-                            app.selected_index = images.len().saturating_sub(1);
-                        }
-                        
-                        if let Some(image) = images.get(app.selected_index) {
-                            ids_to_delete.push(image.id.clone());
-                        }
-                    }
-                    
-                    if !ids_to_delete.is_empty() {
-                        // Check if confirmation is enabled in config
-                        if app.config.general.confirm_delete {
-                            // Show confirmation dialog
-                            app.show_confirm_delete = true;
-                            app.pending_delete_ids = ids_to_delete;
-                        } else {
-                            // Delete without confirmation
-                            for id in ids_to_delete {
-                                let result = {
-                                    let docker = app.docker.lock().await;
-                                    docker.remove_image(&id, false).await
-                                };
-                                if let Err(e) = result {
-                                    app.set_error(format!("Failed to remove image {}: {}", id, e));
-                                }
-                            }
-                            app.clear_selection();
-                        }
-                    }
-                }
-                AppTab::Volumes => {
-                    // Prepare list of items to delete
-                    let mut ids_to_delete = Vec::new();
-                    
-                    if app.has_selection() {
-                        // Use multi-selection
-                        ids_to_delete = app.selected_items.iter().cloned().collect();
-                    } else if let Some(response) = volumes {
-                        if let Some(vols) = &response.volumes {
-                            if app.selected_index >= vols.len() {
-                                app.selected_index = vols.len().saturating_sub(1);
-                            }
 
-                            if let Some(volume) = vols.get(app.selected_index) {
-                                ids_to_delete.push(volume.name.clone());
-                            }
-                        }
-                    }
-                    
-                    if !ids_to_delete.is_empty() {
-                        // Check if confirmation is enabled in config
-                        if app.config.general.confirm_delete {
-                            // Show confirmation dialog
-                            app.show_confirm_delete = true;
-                            app.pending_delete_ids = ids_to_delete;
-                        } else {
-                            // Delete without confirmation
-                            for name in ids_to_delete {
-                                let result = {
-                                    let docker = app.docker.lock().await;
-                                    docker.remove_volume(&name).await
-                                };
-                                if let Err(e) = result {
-                                    app.set_error(format!("Failed to remove volume {}: {}", name, e));
-                                }
-                            }
-                            app.clear_selection();
-                        }
-                    }
-                }
-                AppTab::Networks => {
-                    // Prepare list of items to delete
-                    let mut ids_to_delete = Vec::new();
-                    
-                    if app.has_selection() {
-                        // Use multi-selection
-                        ids_to_delete = app.selected_items.iter().cloned().collect();
-                    } else {
-                        // Use single selection
-                        if app.selected_index >= networks.len() {
-                            app.selected_index = networks.len().saturating_sub(1);
-                        }
-                        
-                        if let Some(network) = networks.get(app.selected_index) {
-                            if let Some(id) = &network.id {
-                                ids_to_delete.push(id.clone());
-                            }
-                        }
-                    }
-                    
-                    if !ids_to_delete.is_empty() {
-                        // Check if confirmation is enabled in config
-                        if app.config.general.confirm_delete {
-                            // Show confirmation dialog
-                            app.show_confirm_delete = true;
-                            app.pending_delete_ids = ids_to_delete;
-                        } else {
-                            // Delete without confirmation
-                            for id in ids_to_delete {
-                                let result = {
-                                    let docker = app.docker.lock().await;
-                                    docker.remove_network(&id).await
-                                };
-                                if let Err(e) = result {
-                                    app.set_error(format!("Failed to remove network {}: {}", id, e));
-                                }
-                            }
-                            app.clear_selection();
-                        }
-                    }
-                }
-            }
+        // Tab switching
+        Action::NextTab | Action::PreviousTab | Action::SwitchToTab(_) => {
+            let should_fetch = handlers::handle_tab_switch(app, action);
+            return Ok(should_fetch);
         }
+
+        // Navigation
+        Action::Up | Action::Down | Action::PageUp | Action::PageDown | Action::Home | Action::End => {
+            handlers::handle_navigation(app, action, containers, images, volumes, networks);
+        }
+
+        // Selection
+        Action::MultiSelect | Action::SelectAll => {
+            handlers::handle_selection(app, action, containers, images, volumes, networks);
+        }
+
+        // Container operations
+        Action::StartStop | Action::Restart => {
+            handlers::handle_container_operations(app, action, containers).await?;
+        }
+
+        // Delete
+        Action::Delete => {
+            handlers::handle_delete_action(app, containers, images, volumes, networks).await?;
+        }
+
+        // View logs
         Action::ViewLogs => {
-            if app.current_tab == AppTab::Containers {
-                // Ensure selected_index is within bounds
-                if app.selected_index >= containers.len() {
-                    app.selected_index = containers.len().saturating_sub(1);
-                }
-                
-                if let Some(container) = containers.get(app.selected_index) {
-                    // Fetch logs
-                    let logs = {
-                        let docker = app.docker.lock().await;
-                        docker.get_container_logs(&container.id, Some(100)).await
-                    };
-                    
-                    match logs {
-                        Ok(log_lines) => {
-                            let mut viewer = LogViewer::new(container.name.clone());
-                            viewer.set_logs(log_lines);
-                            app.log_viewer = Some(viewer);
-                            app.show_logs = true;
-                        }
-                        Err(e) => {
-                            app.set_error(format!("Failed to fetch logs: {}", e));
-                        }
-                    }
-                }
-            }
+            handlers::handle_view_logs(app, containers).await?;
         }
+
+        // View stats
+        Action::ViewStats => {
+            handlers::handle_view_stats(app, containers).await?;
+        }
+
+        // Inspect
         Action::Inspect => {
-            match app.current_tab {
-                AppTab::Containers => {
-                    // Ensure selected_index is within bounds
-                    if app.selected_index >= containers.len() {
-                        app.selected_index = containers.len().saturating_sub(1);
-                    }
-                    
-                    if let Some(container) = containers.get(app.selected_index) {
-                        // Fetch container details
-                        let details = {
-                            let docker = app.docker.lock().await;
-                            docker.get_container(&container.id).await
-                        };
-                        
-                        match details {
-                            Ok(info) => {
-                                let json_value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
-                                let viewer = InspectViewer::new(
-                                    format!("Container: {}", container.name),
-                                    json_value
-                                );
-                                app.inspect_viewer = Some(viewer);
-                                app.show_inspect = true;
-                            }
-                            Err(e) => {
-                                app.set_error(format!("Failed to inspect container: {}", e));
-                            }
-                        }
-                    }
-                }
-                AppTab::Images => {
-                    // Ensure selected_index is within bounds
-                    if app.selected_index >= images.len() {
-                        app.selected_index = images.len().saturating_sub(1);
-                    }
-                    
-                    if let Some(image) = images.get(app.selected_index) {
-                        // Get the image ID (remove sha256: prefix if present)
-                        let image_id = image.id.strip_prefix("sha256:").unwrap_or(&image.id);
-                        
-                        // Fetch image details
-                        let details = {
-                            let docker = app.docker.lock().await;
-                            docker.inspect_image(image_id).await
-                        };
-                        
-                        match details {
-                            Ok(info) => {
-                                let json_value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
-                                let name = image.repo_tags.first()
-                                    .cloned()
-                                    .unwrap_or_else(|| image_id.chars().take(12).collect());
-                                let viewer = InspectViewer::new(
-                                    format!("Image: {}", name),
-                                    json_value
-                                );
-                                app.inspect_viewer = Some(viewer);
-                                app.show_inspect = true;
-                            }
-                            Err(e) => {
-                                app.set_error(format!("Failed to inspect image: {}", e));
-                            }
-                        }
-                    }
-                }
-                AppTab::Volumes => {
-                    if let Some(response) = volumes {
-                        if let Some(vols) = &response.volumes {
-                            // Ensure selected_index is within bounds
-                            if app.selected_index >= vols.len() {
-                                app.selected_index = vols.len().saturating_sub(1);
-                            }
-                            
-                            if let Some(volume) = vols.get(app.selected_index) {
-                                // Fetch volume details
-                                let details = {
-                                    let docker = app.docker.lock().await;
-                                    docker.inspect_volume(&volume.name).await
-                                };
-                                
-                                match details {
-                                    Ok(info) => {
-                                        let json_value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
-                                        let viewer = InspectViewer::new(
-                                            format!("Volume: {}", volume.name),
-                                            json_value
-                                        );
-                                        app.inspect_viewer = Some(viewer);
-                                        app.show_inspect = true;
-                                    }
-                                    Err(e) => {
-                                        app.set_error(format!("Failed to inspect volume: {}", e));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                AppTab::Networks => {
-                    // Ensure selected_index is within bounds
-                    if app.selected_index >= networks.len() {
-                        app.selected_index = networks.len().saturating_sub(1);
-                    }
-                    
-                    if let Some(network) = networks.get(app.selected_index) {
-                        let network_id = network.id.clone()
-                            .unwrap_or_else(String::new);
-                        
-                        // Fetch network details
-                        let details = {
-                            let docker = app.docker.lock().await;
-                            docker.inspect_network(&network_id).await
-                        };
-                        
-                        match details {
-                            Ok(info) => {
-                                let json_value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
-                                let name = network.name.as_ref()
-                                    .cloned()
-                                    .unwrap_or_else(|| "<unknown>".to_string());
-                                let viewer = InspectViewer::new(
-                                    format!("Network: {}", name),
-                                    json_value
-                                );
-                                app.inspect_viewer = Some(viewer);
-                                app.show_inspect = true;
-                            }
-                            Err(e) => {
-                                app.set_error(format!("Failed to inspect network: {}", e));
-                            }
-                        }
-                    }
-                }
-            }
+            handlers::handle_inspect(app, containers, images, volumes, networks).await?;
         }
-        Action::Help => app.show_help = true,
+
+        // Pull image
+        Action::PullImage => {
+            handlers::handle_pull_image(app, images).await?;
+        }
+
+        // Other actions
+        Action::Help => {
+            app.show_help = true;
+        }
         Action::Refresh => {
             app.clear_error();
         }
-        Action::SelectAll => {
-            // Select all items in current tab
-            match app.current_tab {
-                AppTab::Containers => {
-                    for container in containers {
-                        app.selected_items.insert(container.id.clone());
-                    }
-                }
-                AppTab::Images => {
-                    for image in images {
-                        app.selected_items.insert(image.id.clone());
-                    }
-                }
-                AppTab::Volumes => {
-                    if let Some(response) = volumes {
-                        if let Some(vols) = &response.volumes {
-                            for volume in vols {
-                                app.selected_items.insert(volume.name.clone());
-                            }
-                        }
-                    }
-                }
-                AppTab::Networks => {
-                    for network in networks {
-                        if let Some(id) = &network.id {
-                            app.selected_items.insert(id.clone());
-                        }
-                    }
-                }
-            }
+        Action::Search => {
+            // Search not yet implemented
         }
         Action::Escape => {
             app.clear_error();
             app.show_help = false;
-            app.clear_selection(); // Clear selection on Escape
+            app.clear_selection();
         }
-        _ => {}
+
+        Action::Select => {
+            // Select is handled in the main event loop for confirmation dialogs
+        }
     }
-    
+
     Ok(true)
 }

@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::docker::{ContainerSummary, ContainerState};
+use crate::docker::ContainerSummary;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
@@ -27,12 +27,7 @@ pub fn draw_containers_tab(
     let rows: Vec<Row> = containers
         .iter()
         .map(|container| {
-            let status_color = match container.state {
-                ContainerState::Running => Color::Green,
-                ContainerState::Paused => Color::Yellow,
-                ContainerState::Exited | ContainerState::Dead => Color::Red,
-                _ => Color::Gray,
-            };
+            let status_color = app.theme.get_state_color(&container.state);
 
             let ports_str = container
                 .ports
@@ -70,11 +65,6 @@ pub fn draw_containers_tab(
         })
         .collect();
 
-    let selected_style = Style::default()
-        .bg(Color::Blue)
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
-
     let widths = [
         Constraint::Percentage(25),
         Constraint::Percentage(15),
@@ -82,7 +72,7 @@ pub fn draw_containers_tab(
         Constraint::Percentage(20),
         Constraint::Percentage(15),
     ];
-    
+
     let table = Table::new(rows, widths)
         .header(headers)
         .block(
@@ -90,7 +80,7 @@ pub fn draw_containers_tab(
                 .borders(Borders::ALL)
                 .title(format!(" Containers ({}) ", containers.len()))
         )
-        .highlight_style(selected_style);
+        .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
     state.select(Some(app.selected_index));
@@ -165,11 +155,6 @@ pub fn draw_images_tab(
         })
         .collect();
 
-    let selected_style = Style::default()
-        .bg(Color::Blue)
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
-
     let widths = [
         Constraint::Percentage(30),
         Constraint::Percentage(15),
@@ -177,7 +162,7 @@ pub fn draw_images_tab(
         Constraint::Percentage(20),
         Constraint::Percentage(15),
     ];
-    
+
     let table = Table::new(rows, widths)
         .header(headers)
         .block(
@@ -185,7 +170,7 @@ pub fn draw_images_tab(
                 .borders(Borders::ALL)
                 .title(format!(" Images ({}) ", images.len()))
         )
-        .highlight_style(selected_style);
+        .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
     state.select(Some(app.selected_index));
@@ -247,17 +232,13 @@ pub fn draw_volumes_tab(
                 })
                 .collect();
 
-            let selected_style = Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD);
-
             let widths = [
                 Constraint::Percentage(25),
                 Constraint::Percentage(15),
                 Constraint::Percentage(40),
                 Constraint::Percentage(20),
             ];
-            
+
             let table = Table::new(rows, widths)
                 .header(headers)
                 .block(
@@ -265,7 +246,7 @@ pub fn draw_volumes_tab(
                         .borders(Borders::ALL)
                         .title(format!(" Volumes ({}) ", volumes.len()))
                 )
-                .highlight_style(selected_style);
+                .highlight_style(app.theme.selected_style);
 
             let mut state = TableState::default();
             state.select(Some(app.selected_index));
@@ -341,11 +322,6 @@ pub fn draw_networks_tab(
         })
         .collect();
 
-    let selected_style = Style::default()
-        .bg(Color::Blue)
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
-
     let widths = [
         Constraint::Percentage(25),
         Constraint::Percentage(20),
@@ -353,7 +329,7 @@ pub fn draw_networks_tab(
         Constraint::Percentage(15),
         Constraint::Percentage(25),
     ];
-    
+
     let table = Table::new(rows, widths)
         .header(headers)
         .block(
@@ -361,7 +337,7 @@ pub fn draw_networks_tab(
                 .borders(Borders::ALL)
                 .title(format!(" Networks ({}) ", networks.len()))
         )
-        .highlight_style(selected_style);
+        .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
     state.select(Some(app.selected_index));

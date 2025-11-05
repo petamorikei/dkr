@@ -1,5 +1,6 @@
 use crate::app::{App, AppTab};
 use crate::docker::ContainerSummary;
+use super::utils::centered_rect;
 use anyhow::Result;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -11,6 +12,7 @@ use ratatui::{
 
 use super::inspect_viewer::draw_inspect_popup;
 use super::log_viewer::draw_log_popup;
+use super::stats_viewer::draw_stats_popup;
 use super::widgets::{draw_containers_tab, draw_images_tab, draw_networks_tab, draw_volumes_tab};
 
 pub fn render(
@@ -55,19 +57,23 @@ pub fn render(
     }
     
     // Draw log viewer if shown
-    if app.show_logs {
-        if let Some(ref mut viewer) = app.log_viewer {
+    if app.show_logs
+        && let Some(ref mut viewer) = app.log_viewer {
             draw_log_popup(frame, viewer);
         }
-    }
     
     // Draw inspect viewer if shown
-    if app.show_inspect {
-        if let Some(ref viewer) = app.inspect_viewer {
+    if app.show_inspect
+        && let Some(ref viewer) = app.inspect_viewer {
             draw_inspect_popup(frame, viewer);
         }
-    }
-    
+
+    // Draw stats viewer if shown
+    if app.show_stats
+        && let Some(ref viewer) = app.stats_viewer {
+            draw_stats_popup(frame, viewer);
+        }
+
     // Draw delete confirmation dialog if shown
     if app.show_confirm_delete {
         draw_delete_confirmation(frame, app.current_tab, app.pending_delete_ids.len());
@@ -137,6 +143,8 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
             help_text.extend(vec![
                 Span::styled("[s]", Style::default().fg(Color::Yellow)),
                 Span::raw(" Start/Stop  "),
+                Span::styled("[S]", Style::default().fg(Color::Yellow)),
+                Span::raw(" Stats  "),
                 Span::styled("[R]", Style::default().fg(Color::Yellow)),
                 Span::raw(" Restart  "),
                 Span::styled("[d]", Style::default().fg(Color::Yellow)),
@@ -149,6 +157,8 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         }
         AppTab::Images => {
             help_text.extend(vec![
+                Span::styled("[p]", Style::default().fg(Color::Yellow)),
+                Span::raw(" Pull  "),
                 Span::styled("[d]", Style::default().fg(Color::Yellow)),
                 Span::raw(" Delete  "),
                 Span::styled("[i]", Style::default().fg(Color::Yellow)),
@@ -238,15 +248,23 @@ fn draw_help_popup(frame: &mut Frame) {
             Span::styled("Container Operations (Containers tab only)", Style::default().add_modifier(Modifier::BOLD)),
         ]),
         Line::from("  s              - Start/Stop container"),
+        Line::from("  S (Shift+s)    - View container stats (CPU/Memory)"),
         Line::from("  R              - Restart container"),
         Line::from("  d, Delete      - Remove container"),
         Line::from("  l              - View logs"),
         Line::from("  i              - Inspect (JSON)"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Image/Volume/Network Operations", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("Image Operations", Style::default().add_modifier(Modifier::BOLD)),
         ]),
-        Line::from("  d, Delete      - Remove selected item (Not yet implemented)"),
+        Line::from("  p              - Pull image"),
+        Line::from("  d, Delete      - Remove image"),
+        Line::from("  i              - Inspect (JSON)"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Volume/Network Operations", Style::default().add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from("  d, Delete      - Remove selected item"),
         Line::from("  i              - Inspect (JSON)"),
         Line::from(""),
         Line::from("Press any key to close this help"),
@@ -262,26 +280,6 @@ fn draw_help_popup(frame: &mut Frame) {
         .alignment(Alignment::Left);
     
     frame.render_widget(help, area);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 fn draw_delete_confirmation(frame: &mut Frame, tab: AppTab, count: usize) {

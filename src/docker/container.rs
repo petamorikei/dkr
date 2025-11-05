@@ -1,48 +1,87 @@
+//! Docker container data structures and conversions
+
 use bollard::models::{ContainerInspectResponse, ContainerSummary as BollardContainer};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Summary information about a Docker container
+///
+/// This is a simplified representation used for list views in the TUI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerSummary {
+    /// Container ID
     pub id: String,
+    /// Container name (without leading slash)
     pub name: String,
+    /// Image name the container was created from
     pub image: String,
+    /// Human-readable status string
     pub status: String,
+    /// Current state of the container
     pub state: ContainerState,
+    /// Unix timestamp of when the container was created
     pub created: i64,
+    /// Port mappings for the container
     pub ports: Vec<PortMapping>,
 }
+
+/// Detailed information about a Docker container
+///
+/// Contains comprehensive container metadata obtained from Docker inspect.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerInfo {
+    /// Container ID
     pub id: String,
+    /// Container name
     pub name: String,
+    /// Image name
     pub image: String,
+    /// Status string
     pub status: String,
+    /// Current state
     pub state: ContainerState,
+    /// Creation timestamp
     pub created: DateTime<Utc>,
+    /// When the container was started (if applicable)
     pub started_at: Option<DateTime<Utc>>,
+    /// When the container finished (if applicable)
     pub finished_at: Option<DateTime<Utc>>,
+    /// Port mappings
     pub ports: Vec<PortMapping>,
+    /// Volume mounts
     pub mounts: Vec<MountInfo>,
+    /// Network names the container is connected to
     pub networks: Vec<String>,
+    /// Command being executed
     pub command: String,
+    /// Entrypoint configuration
     pub entrypoint: Vec<String>,
+    /// Environment variables
     pub environment: Vec<String>,
 }
 
+/// Represents the current state of a Docker container
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ContainerState {
+    /// Container is currently running
     Running,
+    /// Container is paused
     Paused,
+    /// Container is in the process of restarting
     Restarting,
+    /// Container has exited
     Exited,
+    /// Container is dead (rare state)
     Dead,
+    /// Container has been created but not started
     Created,
+    /// Unknown or unrecognized state
     Unknown,
 }
 
 impl ContainerState {
+    /// Returns the string representation of the container state
     pub fn as_str(&self) -> &'static str {
         match self {
             ContainerState::Running => "Running",
@@ -59,6 +98,9 @@ impl ContainerState {
 impl FromStr for ContainerState {
     type Err = ();
 
+    /// Parses a string into a ContainerState
+    ///
+    /// Case-insensitive parsing. Unknown states are mapped to `Unknown`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "running" => ContainerState::Running,
@@ -72,18 +114,29 @@ impl FromStr for ContainerState {
     }
 }
 
+/// Port mapping information for a container
+///
+/// Represents how a container's internal port is exposed to the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortMapping {
+    /// Internal container port
     pub private_port: u16,
+    /// Host port (if mapped)
     pub public_port: Option<u16>,
+    /// Protocol (tcp/udp)
     pub protocol: String,
 }
 
+/// Volume mount information for a container
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MountInfo {
+    /// Source path on the host
     pub source: String,
+    /// Destination path in the container
     pub destination: String,
+    /// Mount mode (e.g., "rw", "ro")
     pub mode: String,
+    /// Type of mount (e.g., "bind", "volume")
     pub mount_type: String,
 }
 
@@ -231,6 +284,32 @@ impl From<ContainerInspectResponse> for ContainerInfo {
             command: config.cmd.unwrap_or_default().join(" "),
             entrypoint: config.entrypoint.unwrap_or_default(),
             environment: config.env.unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Real-time statistics for a running container
+///
+/// Contains CPU and memory usage metrics.
+pub struct ContainerStats {
+    /// CPU usage as a percentage (0-100+)
+    pub cpu_percent: f64,
+    /// Current memory usage in bytes
+    pub memory_usage: u64,
+    /// Memory limit in bytes
+    pub memory_limit: u64,
+    /// Memory usage as a percentage (0-100)
+    pub memory_percent: f64,
+}
+
+impl Default for ContainerStats {
+    fn default() -> Self {
+        Self {
+            cpu_percent: 0.0,
+            memory_usage: 0,
+            memory_limit: 0,
+            memory_percent: 0.0,
         }
     }
 }

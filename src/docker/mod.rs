@@ -1,5 +1,5 @@
 mod client;
 mod container;
 
-pub use client::DockerClient;
-pub use container::{ContainerInfo, ContainerSummary, ContainerState};
+pub use client::{BollardDockerClient, DockerClient};
+pub use container::{ContainerInfo, ContainerStats, ContainerSummary, ContainerState};
