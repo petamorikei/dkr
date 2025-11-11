@@ -127,6 +127,8 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" Navigate  "),
         Span::styled("[Space]", Style::default().fg(Color::Yellow)),
         Span::raw(" Select  "),
+        Span::styled("[a]", Style::default().fg(Color::Yellow)),
+        Span::raw(" All  "),
     ];
     
     // Show selection count if items are selected
@@ -241,7 +243,7 @@ fn draw_help_popup(frame: &mut Frame) {
         Line::from("  PageUp/Down    - Page navigation"),
         Line::from("  Home/End       - Jump to start/end"),
         Line::from("  Space          - Toggle selection (for batch operations)"),
-        Line::from("  Ctrl+a         - Select all items"),
+        Line::from("  a              - Select all / Deselect all (toggle)"),
         Line::from("  Esc            - Clear selection / Close dialogs"),
         Line::from(""),
         Line::from(vec![

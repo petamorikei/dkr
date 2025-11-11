@@ -108,6 +108,7 @@ pub fn handle_key_event(key: KeyEvent) -> Option<Action> {
         // Selection
         (KeyCode::Enter, KeyModifiers::NONE) => Some(Action::Select),
         (KeyCode::Char(' '), KeyModifiers::NONE) => Some(Action::MultiSelect),
+        (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::SelectAll),
         
         // Container operations
         (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::StartStop),
@@ -130,7 +131,6 @@ pub fn handle_key_event(key: KeyEvent) -> Option<Action> {
         }
         (KeyCode::Char('?'), KeyModifiers::NONE) => Some(Action::Help),
         (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::Search),
-        (KeyCode::Char('a'), KeyModifiers::CONTROL) => Some(Action::SelectAll),
         (KeyCode::Esc, KeyModifiers::NONE) => Some(Action::Escape),
         
         _ => None,

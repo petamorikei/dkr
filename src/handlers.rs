@@ -113,30 +113,47 @@ pub fn handle_selection(
             }
         }
         Action::SelectAll => {
-            app.clear_selection();
-            match app.current_tab {
-                AppTab::Containers => {
-                    for container in containers {
-                        app.selected_items.insert(container.id.clone());
-                    }
-                }
-                AppTab::Images => {
-                    for image in images {
-                        app.selected_items.insert(image.id.clone());
-                    }
-                }
-                AppTab::Volumes => {
-                    if let Some(response) = volumes
-                        && let Some(vols) = &response.volumes {
-                            for volume in vols {
-                                app.selected_items.insert(volume.name.clone());
-                            }
+            // Count total items in current tab
+            let total_items = match app.current_tab {
+                AppTab::Containers => containers.len(),
+                AppTab::Images => images.len(),
+                AppTab::Volumes => volumes
+                    .as_ref()
+                    .and_then(|v| v.volumes.as_ref())
+                    .map(|v| v.len())
+                    .unwrap_or(0),
+                AppTab::Networks => networks.len(),
+            };
+
+            // If all items are selected, deselect all. Otherwise, select all.
+            if app.selected_items.len() == total_items && total_items > 0 {
+                app.clear_selection();
+            } else {
+                app.clear_selection();
+                match app.current_tab {
+                    AppTab::Containers => {
+                        for container in containers {
+                            app.selected_items.insert(container.id.clone());
                         }
-                }
-                AppTab::Networks => {
-                    for network in networks {
-                        if let Some(id) = &network.id {
-                            app.selected_items.insert(id.clone());
+                    }
+                    AppTab::Images => {
+                        for image in images {
+                            app.selected_items.insert(image.id.clone());
+                        }
+                    }
+                    AppTab::Volumes => {
+                        if let Some(response) = volumes
+                            && let Some(vols) = &response.volumes {
+                                for volume in vols {
+                                    app.selected_items.insert(volume.name.clone());
+                                }
+                            }
+                    }
+                    AppTab::Networks => {
+                        for network in networks {
+                            if let Some(id) = &network.id {
+                                app.selected_items.insert(id.clone());
+                            }
                         }
                     }
                 }
