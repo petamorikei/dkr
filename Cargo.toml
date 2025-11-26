@@ -2,9 +2,14 @@
 name = "dkr"
 version = "0.1.0"
 edition = "2024"
-authors = ["Your Name"]
-description = "A Docker TUI application"
+authors = ["Petamori <petamorikei@gmail.com>"]
+description = "A terminal user interface (TUI) for managing Docker containers, images, volumes, and networks"
 license = "MIT"
+repository = "https://github.com/petamorikei/dkr"
+homepage = "https://github.com/petamorikei/dkr"
+readme = "README.md"
+keywords = ["docker", "tui", "terminal", "container", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 # TUI framework
