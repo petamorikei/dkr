@@ -112,16 +112,17 @@ impl LogViewer {
     }
 
     pub fn search(&mut self, term: String) {
+        // Pre-compute lowercase once for case-insensitive search
+        let term_lower = term.to_lowercase();
         self.search_term = Some(term);
+
         // Find next occurrence from current position
-        if let Some(ref term) = self.search_term {
-            for (i, log) in self.logs.iter().enumerate().skip(self.scroll_position + 1) {
-                if log.to_lowercase().contains(&term.to_lowercase()) {
-                    self.scroll_position = i;
-                    self.is_following = false;
-                    self.list_state.select(Some(i));
-                    break;
-                }
+        for (i, log) in self.logs.iter().enumerate().skip(self.scroll_position + 1) {
+            if log.to_lowercase().contains(&term_lower) {
+                self.scroll_position = i;
+                self.is_following = false;
+                self.list_state.select(Some(i));
+                break;
             }
         }
     }
@@ -132,9 +133,10 @@ impl LogViewer {
 
     pub fn find_next(&mut self) {
         if let Some(ref term) = self.search_term {
+            let term_lower = term.to_lowercase();
             let start = (self.scroll_position + 1).min(self.logs.len());
             for (i, log) in self.logs.iter().enumerate().skip(start) {
-                if log.to_lowercase().contains(&term.to_lowercase()) {
+                if log.to_lowercase().contains(&term_lower) {
                     self.scroll_position = i;
                     self.is_following = false;
                     self.list_state.select(Some(i));
@@ -146,8 +148,9 @@ impl LogViewer {
 
     pub fn find_previous(&mut self) {
         if let Some(ref term) = self.search_term {
+            let term_lower = term.to_lowercase();
             for (i, log) in self.logs[..self.scroll_position].iter().enumerate().rev() {
-                if log.to_lowercase().contains(&term.to_lowercase()) {
+                if log.to_lowercase().contains(&term_lower) {
                     self.scroll_position = i;
                     self.is_following = false;
                     self.list_state.select(Some(i));
@@ -193,25 +196,41 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
 
     frame.render_widget(header, chunks[0]);
 
-    // Logs
+    // Logs - pre-compute lowercase search term once for performance
+    let search_info = viewer
+        .search_term
+        .as_ref()
+        .map(|term| (term.clone(), term.to_lowercase()));
+
     let log_items: Vec<ListItem> = viewer
         .logs
         .iter()
         .map(|log| {
-            let content = if let Some(ref term) = viewer.search_term {
-                if log.to_lowercase().contains(&term.to_lowercase()) {
-                    // Highlight search term
-                    let parts: Vec<&str> = log.split(term.as_str()).collect();
+            let content = if let Some((ref term, ref term_lower)) = search_info {
+                if log.to_lowercase().contains(term_lower) {
+                    // Highlight search term (case-insensitive split)
+                    let log_lower = log.to_lowercase();
                     let mut spans = Vec::new();
-                    for (j, part) in parts.iter().enumerate() {
-                        spans.push(Span::raw(*part));
-                        if j < parts.len() - 1 {
-                            spans.push(Span::styled(
-                                term.clone(),
-                                Style::default().bg(Color::Yellow).fg(Color::Black),
-                            ));
+                    let mut last_end = 0;
+
+                    // Find all occurrences of the search term
+                    for (start, _) in log_lower.match_indices(term_lower) {
+                        // Add text before match
+                        if start > last_end {
+                            spans.push(Span::raw(log[last_end..start].to_string()));
                         }
+                        // Add highlighted match (preserve original case)
+                        spans.push(Span::styled(
+                            log[start..start + term.len()].to_string(),
+                            Style::default().bg(Color::Yellow).fg(Color::Black),
+                        ));
+                        last_end = start + term.len();
                     }
+                    // Add remaining text after last match
+                    if last_end < log.len() {
+                        spans.push(Span::raw(log[last_end..].to_string()));
+                    }
+
                     Line::from(spans)
                 } else {
                     Line::from(log.as_str())
