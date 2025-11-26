@@ -1,4 +1,4 @@
-use crate::app::{App, AppTab};
+use crate::app::{App, AppTab, StatusKind};
 use crate::docker::ContainerSummary;
 use super::utils::centered_rect;
 use anyhow::Result;
@@ -46,9 +46,9 @@ pub fn render(
     // Draw footer with help
     draw_footer(frame, app, chunks[2]);
 
-    // Draw error message if present
-    if let Some(error) = &app.error_message {
-        draw_error_popup(frame, error);
+    // Draw status message if present
+    if let Some(status) = &app.status_message {
+        draw_status_popup(frame, status.kind, &status.message);
     }
 
     // Draw help popup if shown
@@ -200,22 +200,28 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(help, area);
 }
 
-fn draw_error_popup(frame: &mut Frame, error: &str) {
+fn draw_status_popup(frame: &mut Frame, kind: StatusKind, message: &str) {
     let area = centered_rect(60, 20, frame.size());
-    
+
     frame.render_widget(Clear, area);
-    
-    let error_widget = Paragraph::new(error)
+
+    let (title, color) = match kind {
+        StatusKind::Success => (" Success ", Color::Green),
+        StatusKind::Info => (" Info ", Color::Blue),
+        StatusKind::Error => (" Error ", Color::Red),
+    };
+
+    let status_widget = Paragraph::new(message)
         .block(
             Block::default()
-                .title(" Error ")
+                .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Red))
+                .border_style(Style::default().fg(color))
         )
-        .style(Style::default().fg(Color::Red))
+        .style(Style::default().fg(color))
         .alignment(Alignment::Center);
-    
-    frame.render_widget(error_widget, area);
+
+    frame.render_widget(status_widget, area);
 }
 
 fn draw_help_popup(frame: &mut Frame) {

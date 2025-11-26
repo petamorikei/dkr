@@ -72,31 +72,30 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
         .take(chunks[0].height as usize - 2) // Account for borders
         .map(|line| {
             // Basic JSON syntax highlighting
-            if line.trim_start().starts_with('"') {
-                // Key or string value
-                if line.contains(':') {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('"') {
+                // Check if this is a key-value pair (has '": ' pattern)
+                if let Some(colon_pos) = line.find("\": ") {
                     // It's a key-value pair
-                    let parts: Vec<&str> = line.splitn(2, ':').collect();
-                    if parts.len() == 2 {
-                        let key = parts[0];
-                        let value = parts[1];
-                        Line::from(vec![
-                            Span::styled(key, Style::default().fg(Color::Cyan)),
-                            Span::raw(":"),
-                            Span::styled(value, Style::default().fg(Color::White)),
-                        ])
-                    } else {
-                        Line::from(line)
-                    }
+                    let (key_part, rest) = line.split_at(colon_pos + 1);
+                    Line::from(vec![
+                        Span::styled(key_part, Style::default().fg(Color::Cyan)),
+                        Span::styled(rest, Style::default().fg(Color::White)),
+                    ])
                 } else {
+                    // String value (in array or standalone)
                     Line::styled(line, Style::default().fg(Color::Green))
                 }
-            } else if line.trim_start().starts_with('[') || line.trim_start().starts_with(']') ||
-                      line.trim_start().starts_with('{') || line.trim_start().starts_with('}') {
+            } else if trimmed.starts_with('[') || trimmed.starts_with(']') ||
+                      trimmed.starts_with('{') || trimmed.starts_with('}') {
                 // Array or object brackets
                 Line::styled(line, Style::default().fg(Color::Yellow))
-            } else if line.contains("true") || line.contains("false") || line.contains("null") {
-                // Boolean or null values
+            } else if trimmed == "true," || trimmed == "false," || trimmed == "null," ||
+                      trimmed == "true" || trimmed == "false" || trimmed == "null" {
+                // Boolean or null values (exact match)
+                Line::styled(line, Style::default().fg(Color::Magenta))
+            } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-') {
+                // Number values
                 Line::styled(line, Style::default().fg(Color::Magenta))
             } else {
                 Line::from(line)

@@ -559,7 +559,7 @@ pub async fn handle_pull_image(
 
             match result {
                 Ok(()) => {
-                    // Success - could add a success message if needed
+                    app.set_success(format!("Successfully pulled image: {}", image_name));
                 }
                 Err(e) => {
                     app.set_error(format!("Failed to pull image {}: {}", image_name, e));

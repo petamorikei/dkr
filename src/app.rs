@@ -7,6 +7,26 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Kind of status message
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StatusKind {
+    /// Success message (green)
+    Success,
+    /// Informational message (blue)
+    Info,
+    /// Error message (red)
+    Error,
+}
+
+/// Status message to display to the user
+#[derive(Debug, Clone)]
+pub struct StatusMessage {
+    /// The kind of message
+    pub kind: StatusKind,
+    /// The message text
+    pub message: String,
+}
+
 /// Represents the different tabs/views in the TUI
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppTab {
@@ -89,8 +109,8 @@ pub struct App {
     pub inspect_viewer: Option<InspectViewer>,
     /// Active stats viewer instance
     pub stats_viewer: Option<StatsViewer>,
-    /// Current error message to display
-    pub error_message: Option<String>,
+    /// Current status message to display
+    pub status_message: Option<StatusMessage>,
 }
 
 impl App {
@@ -123,7 +143,7 @@ impl App {
             log_viewer: None,
             inspect_viewer: None,
             stats_viewer: None,
-            error_message: None,
+            status_message: None,
         })
     }
 
@@ -216,12 +236,31 @@ impl App {
 
     /// Sets an error message to be displayed
     pub fn set_error(&mut self, message: String) {
-        self.error_message = Some(message);
+        self.status_message = Some(StatusMessage {
+            kind: StatusKind::Error,
+            message,
+        });
     }
 
-    /// Clears the current error message
-    pub fn clear_error(&mut self) {
-        self.error_message = None;
+    /// Sets a success message to be displayed
+    pub fn set_success(&mut self, message: String) {
+        self.status_message = Some(StatusMessage {
+            kind: StatusKind::Success,
+            message,
+        });
+    }
+
+    /// Sets an info message to be displayed
+    pub fn set_info(&mut self, message: String) {
+        self.status_message = Some(StatusMessage {
+            kind: StatusKind::Info,
+            message,
+        });
+    }
+
+    /// Clears the current status message
+    pub fn clear_status(&mut self) {
+        self.status_message = None;
     }
 
     /// Signals that the application should quit

@@ -345,13 +345,13 @@ async fn handle_action(
             app.show_help = true;
         }
         Action::Refresh => {
-            app.clear_error();
+            app.clear_status();
         }
         Action::Search => {
             // Search not yet implemented
         }
         Action::Escape => {
-            app.clear_error();
+            app.clear_status();
             app.show_help = false;
             app.clear_selection();
         }
