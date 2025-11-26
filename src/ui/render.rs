@@ -256,7 +256,7 @@ fn draw_status_popup(frame: &mut Frame, kind: StatusKind, message: &str) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(color)),
+                .border_style(Style::default().fg(Color::Cyan)),
         )
         .style(Style::default().fg(color))
         .alignment(Alignment::Center);
@@ -380,7 +380,7 @@ fn draw_delete_confirmation(frame: &mut Frame, tab: AppTab, count: usize) {
             Block::default()
                 .title(" Confirm Delete ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow)),
+                .border_style(Style::default().fg(Color::Cyan)),
         )
         .alignment(Alignment::Center);
 

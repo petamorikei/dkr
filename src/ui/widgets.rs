@@ -66,7 +66,7 @@ pub fn draw_containers_tab(
                     container.state.with_icon(),
                     Style::default().fg(status_color),
                 )),
-                Cell::from(container.image.clone()),
+                Cell::from(container.image.as_str()),
                 Cell::from(ports_str),
                 Cell::from(created),
             ])
@@ -128,8 +128,8 @@ pub fn draw_images_tab(
     let filtered: Vec<_> = images
         .iter()
         .filter(|img| {
-            let repo_tag = img.repo_tags.first().cloned().unwrap_or_default();
-            app.matches_search(&repo_tag) || app.matches_search(&img.id)
+            let repo_tag = img.repo_tags.first().map(|s| s.as_str()).unwrap_or("");
+            app.matches_search(repo_tag) || app.matches_search(&img.id)
         })
         .collect();
 
@@ -155,12 +155,12 @@ pub fn draw_images_tab(
             let repo_tags = image
                 .repo_tags
                 .first()
-                .cloned()
-                .unwrap_or_else(|| "<none>".to_string());
+                .map(|s| s.as_str())
+                .unwrap_or("<none>");
 
             let parts: Vec<&str> = repo_tags.split(':').collect();
             let repo = format!("{}{}", selected_mark, parts.first().unwrap_or(&"<none>"));
-            let tag = parts.get(1).unwrap_or(&"<none>").to_string();
+            let tag = *parts.get(1).unwrap_or(&"<none>");
 
             let id = image.id.chars().skip(7).take(12).collect::<String>();
 
@@ -259,18 +259,12 @@ pub fn draw_volumes_tab(
                         "[ ] "
                     };
                     let name = format!("{}{}", selected_mark, volume.name);
-                    let driver = volume.driver.clone();
-                    let mountpoint = volume.mountpoint.clone();
-                    let created = volume
-                        .created_at
-                        .as_ref()
-                        .unwrap_or(&"<unknown>".to_string())
-                        .clone();
+                    let created = volume.created_at.as_deref().unwrap_or("<unknown>");
 
                     Row::new(vec![
                         Cell::from(name),
-                        Cell::from(driver),
-                        Cell::from(mountpoint),
+                        Cell::from(volume.driver.as_str()),
+                        Cell::from(volume.mountpoint.as_str()),
                         Cell::from(created),
                     ])
                     .height(1)
@@ -356,36 +350,20 @@ pub fn draw_networks_tab(
         .iter()
         .map(|network| {
             // Add checkbox indicator for multi-selection
-            let network_id = network.id.as_ref().unwrap_or(&"<none>".to_string()).clone();
-            let selected_mark = if app.selected_items.contains(&network_id) {
+            let network_id = network.id.as_deref().unwrap_or("<none>");
+            let selected_mark = if app.selected_items.contains(network_id) {
                 "[✓] "
             } else {
                 "[ ] "
             };
 
-            let name = network
-                .name
-                .as_ref()
-                .unwrap_or(&"<none>".to_string())
-                .clone();
+            let name = network.name.as_deref().unwrap_or("<none>");
             let name_with_mark = format!("{}{}", selected_mark, name);
 
-            let id = network_id.chars().take(12).collect::<String>();
-            let driver = network
-                .driver
-                .as_ref()
-                .unwrap_or(&"<none>".to_string())
-                .clone();
-            let scope = network
-                .scope
-                .as_ref()
-                .unwrap_or(&"<none>".to_string())
-                .clone();
-            let created = network
-                .created
-                .as_ref()
-                .unwrap_or(&"<unknown>".to_string())
-                .clone();
+            let id: String = network_id.chars().take(12).collect();
+            let driver = network.driver.as_deref().unwrap_or("<none>");
+            let scope = network.scope.as_deref().unwrap_or("<none>");
+            let created = network.created.as_deref().unwrap_or("<unknown>");
 
             Row::new(vec![
                 Cell::from(name_with_mark),

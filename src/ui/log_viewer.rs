@@ -180,7 +180,11 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
     );
 
     let header = Paragraph::new(header_text)
-        .block(Block::default().borders(Borders::ALL))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
         .style(Style::default().fg(if viewer.is_following {
             Color::Green
         } else {
@@ -221,7 +225,12 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
         .collect();
 
     let logs_list = List::new(log_items)
-        .block(Block::default().borders(Borders::ALL).title(" Log Output "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Log Output "),
+        )
         .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
         .highlight_symbol("> ");
 
@@ -255,7 +264,11 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
     };
 
     let footer = Paragraph::new(Line::from(footer_text))
-        .block(Block::default().borders(Borders::ALL))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
         .alignment(Alignment::Center);
 
     frame.render_widget(footer, chunks[2]);

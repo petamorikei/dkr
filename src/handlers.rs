@@ -31,7 +31,10 @@ pub fn handle_help_keys(app: &mut App, _key: KeyEvent) -> Option<ModalResult> {
 }
 
 /// Handle delete confirmation modal keys. Returns Some if key was consumed.
-pub async fn handle_confirm_delete_keys(app: &mut App, key: KeyEvent) -> Result<Option<ModalResult>> {
+pub async fn handle_confirm_delete_keys(
+    app: &mut App,
+    key: KeyEvent,
+) -> Result<Option<ModalResult>> {
     if app.modal != ModalState::ConfirmDelete {
         return Ok(None);
     }

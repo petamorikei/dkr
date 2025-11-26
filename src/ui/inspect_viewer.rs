@@ -122,6 +122,7 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
                 .title(format!(" {} ", viewer.title)),
         )
         .wrap(Wrap { trim: false });
@@ -162,7 +163,11 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
     ];
 
     let footer = Paragraph::new(Line::from(footer_text))
-        .block(Block::default().borders(Borders::ALL))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
         .alignment(Alignment::Center);
 
     frame.render_widget(footer, chunks[1]);
