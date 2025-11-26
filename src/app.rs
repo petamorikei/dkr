@@ -18,6 +18,26 @@ pub enum StatusKind {
     Error,
 }
 
+/// Modal state - only one modal can be active at a time
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ModalState {
+    /// No modal is shown
+    #[default]
+    None,
+    /// Help popup is shown
+    Help,
+    /// Delete confirmation dialog is shown
+    ConfirmDelete,
+    /// Inspect viewer is shown
+    Inspect,
+    /// Log viewer is shown
+    Logs,
+    /// Stats viewer is shown
+    Stats,
+    /// Search mode is active
+    Search,
+}
+
 /// Status message to display to the user
 #[derive(Debug, Clone)]
 pub struct StatusMessage {
@@ -91,16 +111,8 @@ pub struct App {
     pub selected_items: std::collections::HashSet<String>,
     /// Whether the application should quit
     pub should_quit: bool,
-    /// Whether the help popup is shown
-    pub show_help: bool,
-    /// Whether the log viewer is shown
-    pub show_logs: bool,
-    /// Whether the inspect viewer is shown
-    pub show_inspect: bool,
-    /// Whether the stats viewer is shown
-    pub show_stats: bool,
-    /// Whether the delete confirmation dialog is shown
-    pub show_confirm_delete: bool,
+    /// Current modal state
+    pub modal: ModalState,
     /// IDs pending deletion (shown in confirmation dialog)
     pub pending_delete_ids: Vec<String>,
     /// Active log viewer instance
@@ -111,8 +123,6 @@ pub struct App {
     pub stats_viewer: Option<StatsViewer>,
     /// Current status message to display
     pub status_message: Option<StatusMessage>,
-    /// Whether search/filter mode is active
-    pub search_mode: bool,
     /// Current search query
     pub search_query: String,
 }
@@ -138,17 +148,12 @@ impl App {
             selected_index: 0,
             selected_items: std::collections::HashSet::new(),
             should_quit: false,
-            show_help: false,
-            show_logs: false,
-            show_inspect: false,
-            show_stats: false,
-            show_confirm_delete: false,
+            modal: ModalState::None,
             pending_delete_ids: Vec::new(),
             log_viewer: None,
             inspect_viewer: None,
             stats_viewer: None,
             status_message: None,
-            search_mode: false,
             search_query: String::new(),
         })
     }
@@ -271,21 +276,40 @@ impl App {
 
     /// Enters search mode
     pub fn start_search(&mut self) {
-        self.search_mode = true;
+        self.modal = ModalState::Search;
         self.search_query.clear();
     }
 
     /// Exits search mode and clears the query
     pub fn cancel_search(&mut self) {
-        self.search_mode = false;
+        self.modal = ModalState::None;
         self.search_query.clear();
         self.selected_index = 0;
     }
 
     /// Applies the current search and exits search mode
     pub fn apply_search(&mut self) {
-        self.search_mode = false;
+        self.modal = ModalState::None;
         self.selected_index = 0;
+    }
+
+    /// Closes the current modal
+    pub fn close_modal(&mut self) {
+        // Clean up associated state first
+        match self.modal {
+            ModalState::Logs => self.log_viewer = None,
+            ModalState::Inspect => self.inspect_viewer = None,
+            ModalState::Stats => self.stats_viewer = None,
+            ModalState::ConfirmDelete => self.pending_delete_ids.clear(),
+            ModalState::Search => self.search_query.clear(),
+            _ => {}
+        }
+        self.modal = ModalState::None;
+    }
+
+    /// Returns true if search mode is active
+    pub fn is_search_mode(&self) -> bool {
+        self.modal == ModalState::Search
     }
 
     /// Adds a character to the search query

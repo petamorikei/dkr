@@ -5,10 +5,10 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dkr::App;
-use dkr::app::AppTab;
+use dkr::app::{AppTab, ModalState};
 use dkr::docker::ContainerSummary;
 use dkr::event::{Action, handle_key_event};
-use dkr::handlers;
+use dkr::handlers::{self, ModalResult};
 use dkr::ui::render;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
@@ -100,7 +100,7 @@ async fn run_app<B: ratatui::backend::Backend>(
         // Handle events
         tokio::select! {
             _ = refresh_interval.tick() => {
-                if app.config.general.auto_refresh && !app.show_help {
+                if app.config.general.auto_refresh && app.modal == ModalState::None {
                     fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
                 }
             }
@@ -108,110 +108,35 @@ async fn run_app<B: ratatui::backend::Backend>(
                 // Check for keyboard events
                 if crossterm::event::poll(Duration::from_millis(0))?
                     && let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-                        if app.show_help {
-                            app.show_help = false;
+                        // Handle modal keys first (order matters)
+                        if handlers::handle_help_keys(app, key).is_some() {
                             continue;
                         }
 
-                        if app.show_confirm_delete {
-                            // Handle delete confirmation
-                            use crossterm::event::KeyCode;
-                            match key.code {
-                                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                                    // Proceed with deletion using handler
-                                    handlers::confirm_delete(app).await?;
-                                    // Refresh data after deletion
-                                    fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
-                                }
-                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                                    // Cancel deletion
-                                    app.show_confirm_delete = false;
-                                    app.pending_delete_ids.clear();
-                                }
-                                _ => {}
+                        if let Some(result) = handlers::handle_confirm_delete_keys(app, key).await? {
+                            if result == ModalResult::RequiresRefresh {
+                                fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
                             }
                             continue;
                         }
 
-                        if app.show_inspect {
-                            // Handle inspect viewer keys
-                            if let Some(ref mut viewer) = app.inspect_viewer {
-                                use crossterm::event::KeyCode;
-                                match key.code {
-                                    KeyCode::Char('q') | KeyCode::Esc => {
-                                        app.show_inspect = false;
-                                        app.inspect_viewer = None;
-                                    }
-                                    KeyCode::Char('j') | KeyCode::Down => viewer.scroll_down(1),
-                                    KeyCode::Char('k') | KeyCode::Up => viewer.scroll_up(1),
-                                    KeyCode::PageDown => viewer.page_down(10),
-                                    KeyCode::PageUp => viewer.page_up(10),
-                                    KeyCode::Home => viewer.scroll_to_top(),
-                                    KeyCode::End => viewer.scroll_to_bottom(),
-                                    _ => {}
-                                }
-                            }
+                        if handlers::handle_inspect_keys(app, key).is_some() {
                             continue;
                         }
 
-                        if app.show_logs {
-                            // Handle log viewer keys
-                            if let Some(ref mut viewer) = app.log_viewer {
-                                use crossterm::event::KeyCode;
-                                match key.code {
-                                    KeyCode::Char('q') | KeyCode::Esc => {
-                                        app.show_logs = false;
-                                        app.log_viewer = None;
-                                    }
-                                    KeyCode::Char('j') | KeyCode::Down => viewer.scroll_down(1),
-                                    KeyCode::Char('k') | KeyCode::Up => viewer.scroll_up(1),
-                                    KeyCode::PageDown => viewer.page_down(10),
-                                    KeyCode::PageUp => viewer.page_up(10),
-                                    KeyCode::Home => viewer.scroll_to_top(),
-                                    KeyCode::End => viewer.scroll_to_bottom(),
-                                    KeyCode::Char('f') => viewer.toggle_follow(),
-                                    KeyCode::Char('n') => viewer.find_next(),
-                                    KeyCode::Char('N') => viewer.find_previous(),
-                                    _ => {}
-                                }
-                            }
+                        if handlers::handle_logs_keys(app, key).is_some() {
                             continue;
                         }
 
-                        if app.show_stats {
-                            // Handle stats viewer keys
-                            use crossterm::event::KeyCode;
-                            match key.code {
-                                KeyCode::Char('q') | KeyCode::Esc => {
-                                    app.show_stats = false;
-                                    app.stats_viewer = None;
-                                }
-                                _ => {}
-                            }
+                        if handlers::handle_stats_keys(app, key).is_some() {
                             continue;
                         }
 
-                        if app.search_mode {
-                            // Handle search input
-                            use crossterm::event::KeyCode;
-                            match key.code {
-                                KeyCode::Esc => {
-                                    app.cancel_search();
-                                }
-                                KeyCode::Enter => {
-                                    app.apply_search();
-                                }
-                                KeyCode::Backspace => {
-                                    app.search_pop();
-                                }
-                                KeyCode::Char(c) => {
-                                    app.search_push(c);
-                                }
-                                _ => {}
-                            }
+                        if handlers::handle_search_keys(app, key).is_some() {
                             continue;
                         }
 
+                        // Handle normal actions
                         if let Some(action) = handle_key_event(key) {
                             if !handle_action(app, action, &containers, &images, &volumes, &networks).await? {
                                 break;
@@ -369,7 +294,7 @@ async fn handle_action(
 
         // Other actions
         Action::Help => {
-            app.show_help = true;
+            app.modal = ModalState::Help;
         }
         Action::Refresh => {
             app.clear_status();
@@ -379,7 +304,7 @@ async fn handle_action(
         }
         Action::Escape => {
             app.clear_status();
-            app.show_help = false;
+            app.modal = ModalState::None;
             app.clear_selection();
             if !app.search_query.is_empty() {
                 app.search_query.clear();

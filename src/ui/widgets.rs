@@ -63,7 +63,7 @@ pub fn draw_containers_tab(
             Row::new(vec![
                 Cell::from(name_with_mark),
                 Cell::from(Span::styled(
-                    container.state.as_str(),
+                    container.state.with_icon(),
                     Style::default().fg(status_color),
                 )),
                 Cell::from(container.image.clone()),

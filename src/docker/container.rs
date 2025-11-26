@@ -93,6 +93,19 @@ impl ContainerState {
             ContainerState::Unknown => "Unknown",
         }
     }
+
+    /// Returns the state with a Unicode icon prefix for accessibility
+    pub fn with_icon(&self) -> &'static str {
+        match self {
+            ContainerState::Running => "▶ Running",
+            ContainerState::Paused => "⏸ Paused",
+            ContainerState::Restarting => "↻ Restarting",
+            ContainerState::Exited => "■ Exited",
+            ContainerState::Dead => "✖ Dead",
+            ContainerState::Created => "○ Created",
+            ContainerState::Unknown => "? Unknown",
+        }
+    }
 }
 
 impl FromStr for ContainerState {

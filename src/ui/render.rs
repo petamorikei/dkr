@@ -1,5 +1,5 @@
 use super::utils::centered_rect;
-use crate::app::{App, AppTab, StatusKind};
+use crate::app::{App, AppTab, ModalState, StatusKind};
 use crate::docker::ContainerSummary;
 use anyhow::Result;
 use ratatui::{
@@ -51,35 +51,30 @@ pub fn render(
         draw_status_popup(frame, status.kind, &status.message);
     }
 
-    // Draw help popup if shown
-    if app.show_help {
-        draw_help_popup(frame);
-    }
-
-    // Draw log viewer if shown
-    if app.show_logs
-        && let Some(ref mut viewer) = app.log_viewer
-    {
-        draw_log_popup(frame, viewer);
-    }
-
-    // Draw inspect viewer if shown
-    if app.show_inspect
-        && let Some(ref viewer) = app.inspect_viewer
-    {
-        draw_inspect_popup(frame, viewer);
-    }
-
-    // Draw stats viewer if shown
-    if app.show_stats
-        && let Some(ref viewer) = app.stats_viewer
-    {
-        draw_stats_popup(frame, viewer);
-    }
-
-    // Draw delete confirmation dialog if shown
-    if app.show_confirm_delete {
-        draw_delete_confirmation(frame, app.current_tab, app.pending_delete_ids.len());
+    // Draw modals based on current modal state
+    match app.modal {
+        ModalState::Help => {
+            draw_help_popup(frame);
+        }
+        ModalState::Logs => {
+            if let Some(ref mut viewer) = app.log_viewer {
+                draw_log_popup(frame, viewer);
+            }
+        }
+        ModalState::Inspect => {
+            if let Some(ref viewer) = app.inspect_viewer {
+                draw_inspect_popup(frame, viewer);
+            }
+        }
+        ModalState::Stats => {
+            if let Some(ref viewer) = app.stats_viewer {
+                draw_stats_popup(frame, viewer);
+            }
+        }
+        ModalState::ConfirmDelete => {
+            draw_delete_confirmation(frame, app.current_tab, app.pending_delete_ids.len());
+        }
+        ModalState::Search | ModalState::None => {}
     }
 
     Ok(())
@@ -131,7 +126,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     // Show search input when in search mode
-    if app.search_mode {
+    if app.modal == ModalState::Search {
         let search_text = vec![
             Span::styled("Search: ", Style::default().fg(Color::Yellow)),
             Span::styled(&app.search_query, Style::default().fg(Color::White)),

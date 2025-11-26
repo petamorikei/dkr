@@ -3,12 +3,143 @@
 //! Contains functions that handle various user actions like navigation,
 //! container operations, deletion, log viewing, etc.
 
-use crate::app::{App, AppTab};
+use crate::app::{App, AppTab, ModalState};
 use crate::docker::ContainerSummary;
 use crate::event::Action;
 use crate::ui::{InspectViewer, LogViewer, StatsViewer};
 use anyhow::{Context, Result};
 use bollard::models::{ImageSummary, Network, VolumeListResponse};
+use crossterm::event::{KeyCode, KeyEvent};
+
+/// Result of handling modal key events
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ModalResult {
+    /// Key was consumed by modal, continue loop
+    Consumed,
+    /// Modal needs data refresh after this action
+    RequiresRefresh,
+}
+
+/// Handle help modal keys. Returns Some if key was consumed.
+pub fn handle_help_keys(app: &mut App, _key: KeyEvent) -> Option<ModalResult> {
+    if app.modal != ModalState::Help {
+        return None;
+    }
+    // Any key closes help
+    app.modal = ModalState::None;
+    Some(ModalResult::Consumed)
+}
+
+/// Handle delete confirmation modal keys. Returns Some if key was consumed.
+pub async fn handle_confirm_delete_keys(app: &mut App, key: KeyEvent) -> Result<Option<ModalResult>> {
+    if app.modal != ModalState::ConfirmDelete {
+        return Ok(None);
+    }
+
+    match key.code {
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            confirm_delete(app).await?;
+            Ok(Some(ModalResult::RequiresRefresh))
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            app.modal = ModalState::None;
+            app.pending_delete_ids.clear();
+            Ok(Some(ModalResult::Consumed))
+        }
+        _ => Ok(Some(ModalResult::Consumed)),
+    }
+}
+
+/// Handle inspect viewer modal keys. Returns Some if key was consumed.
+pub fn handle_inspect_keys(app: &mut App, key: KeyEvent) -> Option<ModalResult> {
+    if app.modal != ModalState::Inspect {
+        return None;
+    }
+
+    if let Some(ref mut viewer) = app.inspect_viewer {
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                app.modal = ModalState::None;
+                app.inspect_viewer = None;
+            }
+            KeyCode::Char('j') | KeyCode::Down => viewer.scroll_down(1),
+            KeyCode::Char('k') | KeyCode::Up => viewer.scroll_up(1),
+            KeyCode::PageDown => viewer.page_down(10),
+            KeyCode::PageUp => viewer.page_up(10),
+            KeyCode::Home => viewer.scroll_to_top(),
+            KeyCode::End => viewer.scroll_to_bottom(),
+            _ => {}
+        }
+    }
+    Some(ModalResult::Consumed)
+}
+
+/// Handle log viewer modal keys. Returns Some if key was consumed.
+pub fn handle_logs_keys(app: &mut App, key: KeyEvent) -> Option<ModalResult> {
+    if app.modal != ModalState::Logs {
+        return None;
+    }
+
+    if let Some(ref mut viewer) = app.log_viewer {
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                app.modal = ModalState::None;
+                app.log_viewer = None;
+            }
+            KeyCode::Char('j') | KeyCode::Down => viewer.scroll_down(1),
+            KeyCode::Char('k') | KeyCode::Up => viewer.scroll_up(1),
+            KeyCode::PageDown => viewer.page_down(10),
+            KeyCode::PageUp => viewer.page_up(10),
+            KeyCode::Home => viewer.scroll_to_top(),
+            KeyCode::End => viewer.scroll_to_bottom(),
+            KeyCode::Char('f') => viewer.toggle_follow(),
+            KeyCode::Char('n') => viewer.find_next(),
+            KeyCode::Char('N') => viewer.find_previous(),
+            _ => {}
+        }
+    }
+    Some(ModalResult::Consumed)
+}
+
+/// Handle stats viewer modal keys. Returns Some if key was consumed.
+pub fn handle_stats_keys(app: &mut App, key: KeyEvent) -> Option<ModalResult> {
+    if app.modal != ModalState::Stats {
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => {
+            app.modal = ModalState::None;
+            app.stats_viewer = None;
+        }
+        _ => {}
+    }
+    Some(ModalResult::Consumed)
+}
+
+/// Handle search mode keys. Returns Some if key was consumed.
+pub fn handle_search_keys(app: &mut App, key: KeyEvent) -> Option<ModalResult> {
+    if app.modal != ModalState::Search {
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            app.cancel_search();
+        }
+        KeyCode::Enter => {
+            app.apply_search();
+        }
+        KeyCode::Backspace => {
+            app.search_pop();
+        }
+        KeyCode::Char(c) => {
+            app.search_push(c);
+        }
+        _ => {}
+    }
+    Some(ModalResult::Consumed)
+}
 
 /// Handle navigation actions (Up, Down, PageUp, PageDown, Home, End)
 pub fn handle_navigation(
@@ -225,7 +356,7 @@ pub async fn handle_delete_action(
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
-                    app.show_confirm_delete = true;
+                    app.modal = ModalState::ConfirmDelete;
                     app.pending_delete_ids = ids_to_delete;
                 } else {
                     for id in &ids_to_delete {
@@ -250,7 +381,7 @@ pub async fn handle_delete_action(
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
-                    app.show_confirm_delete = true;
+                    app.modal = ModalState::ConfirmDelete;
                     app.pending_delete_ids = ids_to_delete;
                 } else {
                     for id in &ids_to_delete {
@@ -283,7 +414,7 @@ pub async fn handle_delete_action(
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
-                    app.show_confirm_delete = true;
+                    app.modal = ModalState::ConfirmDelete;
                     app.pending_delete_ids = ids_to_delete;
                 } else {
                     for name in &ids_to_delete {
@@ -310,7 +441,7 @@ pub async fn handle_delete_action(
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
-                    app.show_confirm_delete = true;
+                    app.modal = ModalState::ConfirmDelete;
                     app.pending_delete_ids = ids_to_delete;
                 } else {
                     for id in &ids_to_delete {
@@ -346,7 +477,7 @@ pub async fn handle_view_logs(app: &mut App, containers: &[ContainerSummary]) ->
                 let mut viewer = LogViewer::new(container.name.clone());
                 viewer.set_logs(logs);
                 app.log_viewer = Some(viewer);
-                app.show_logs = true;
+                app.modal = ModalState::Logs;
             }
             Err(e) => {
                 app.set_error(format!("Failed to fetch logs: {}", e));
@@ -380,7 +511,7 @@ pub async fn handle_inspect(
                             format!("Container: {}", container.name),
                             json_value,
                         ));
-                        app.show_inspect = true;
+                        app.modal = ModalState::Inspect;
                     }
                     Err(e) => {
                         app.set_error(format!("Failed to inspect container: {}", e));
@@ -410,7 +541,7 @@ pub async fn handle_inspect(
                                 format!("Image: {}", image_id.chars().take(12).collect::<String>())
                             });
                         app.inspect_viewer = Some(InspectViewer::new(title, json_value));
-                        app.show_inspect = true;
+                        app.modal = ModalState::Inspect;
                     }
                     Err(e) => {
                         app.set_error(format!("Failed to inspect image: {}", e));
@@ -440,7 +571,7 @@ pub async fn handle_inspect(
                                 format!("Volume: {}", volume.name),
                                 json_value,
                             ));
-                            app.show_inspect = true;
+                            app.modal = ModalState::Inspect;
                         }
                         Err(e) => {
                             app.set_error(format!("Failed to inspect volume: {}", e));
@@ -472,7 +603,7 @@ pub async fn handle_inspect(
                             .map(|name| format!("Network: {}", name))
                             .unwrap_or_else(|| "Network".to_string());
                         app.inspect_viewer = Some(InspectViewer::new(title, json_value));
-                        app.show_inspect = true;
+                        app.modal = ModalState::Inspect;
                     }
                     Err(e) => {
                         app.set_error(format!("Failed to inspect network: {}", e));
@@ -487,10 +618,10 @@ pub async fn handle_inspect(
 
 /// Confirm and execute delete operation
 pub async fn confirm_delete(app: &mut App) -> Result<()> {
-    if app.show_confirm_delete {
+    if app.modal == ModalState::ConfirmDelete {
         let ids = app.pending_delete_ids.clone();
         let current_tab = app.current_tab;
-        app.show_confirm_delete = false;
+        app.modal = ModalState::None;
         app.pending_delete_ids.clear();
 
         for id in &ids {
@@ -536,7 +667,7 @@ pub async fn handle_view_stats(app: &mut App, containers: &[ContainerSummary]) -
         match result {
             Ok(stats) => {
                 app.stats_viewer = Some(StatsViewer::new(container_name, stats));
-                app.show_stats = true;
+                app.modal = ModalState::Stats;
             }
             Err(e) => {
                 app.set_error(format!("Failed to get container stats: {}", e));
