@@ -1,13 +1,13 @@
+use super::utils::centered_rect;
 use crate::app::{App, AppTab, StatusKind};
 use crate::docker::ContainerSummary;
-use super::utils::centered_rect;
 use anyhow::Result;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Tabs},
-    Frame,
 };
 
 use super::inspect_viewer::draw_inspect_popup;
@@ -26,9 +26,9 @@ pub fn render(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header with tabs
-            Constraint::Min(0),     // Main content
-            Constraint::Length(3),  // Footer
+            Constraint::Length(3), // Header with tabs
+            Constraint::Min(0),    // Main content
+            Constraint::Length(3), // Footer
         ])
         .split(frame.size());
 
@@ -55,24 +55,27 @@ pub fn render(
     if app.show_help {
         draw_help_popup(frame);
     }
-    
+
     // Draw log viewer if shown
     if app.show_logs
-        && let Some(ref mut viewer) = app.log_viewer {
-            draw_log_popup(frame, viewer);
-        }
-    
+        && let Some(ref mut viewer) = app.log_viewer
+    {
+        draw_log_popup(frame, viewer);
+    }
+
     // Draw inspect viewer if shown
     if app.show_inspect
-        && let Some(ref viewer) = app.inspect_viewer {
-            draw_inspect_popup(frame, viewer);
-        }
+        && let Some(ref viewer) = app.inspect_viewer
+    {
+        draw_inspect_popup(frame, viewer);
+    }
 
     // Draw stats viewer if shown
     if app.show_stats
-        && let Some(ref viewer) = app.stats_viewer {
-            draw_stats_popup(frame, viewer);
-        }
+        && let Some(ref viewer) = app.stats_viewer
+    {
+        draw_stats_popup(frame, viewer);
+    }
 
     // Draw delete confirmation dialog if shown
     if app.show_confirm_delete {
@@ -110,35 +113,77 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         .unwrap_or(0);
 
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title(" dkr - Docker TUI "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" dkr - Docker TUI "),
+        )
         .select(selected_index)
         .style(Style::default().fg(Color::White))
-        .highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
 
     frame.render_widget(tabs, area);
 }
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
+    // Show search input when in search mode
+    if app.search_mode {
+        let search_text = vec![
+            Span::styled("Search: ", Style::default().fg(Color::Yellow)),
+            Span::styled(&app.search_query, Style::default().fg(Color::White)),
+            Span::styled(
+                "_",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
+            Span::raw("  "),
+            Span::styled("[Enter]", Style::default().fg(Color::DarkGray)),
+            Span::raw(" Apply  "),
+            Span::styled("[Esc]", Style::default().fg(Color::DarkGray)),
+            Span::raw(" Cancel"),
+        ];
+
+        let search_bar = Paragraph::new(Line::from(search_text))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan)),
+            )
+            .alignment(Alignment::Left);
+
+        frame.render_widget(search_bar, area);
+        return;
+    }
+
     let mut help_text = vec![
         // Common navigation keys
         Span::styled("[1-4/Tab]", Style::default().fg(Color::Yellow)),
         Span::raw(" Switch  "),
         Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
         Span::raw(" Navigate  "),
+        Span::styled("[/]", Style::default().fg(Color::Yellow)),
+        Span::raw(" Search  "),
         Span::styled("[Space]", Style::default().fg(Color::Yellow)),
         Span::raw(" Select  "),
         Span::styled("[a]", Style::default().fg(Color::Yellow)),
         Span::raw(" All  "),
     ];
-    
+
     // Show selection count if items are selected
     if app.has_selection() {
         help_text.push(Span::styled(
             format!(" ({} selected) ", app.selected_items.len()),
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
         ));
     }
-    
+
     // Tab-specific operations
     match app.current_tab {
         AppTab::Containers => {
@@ -184,7 +229,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
             ]);
         }
     }
-    
+
     // Common actions
     help_text.extend(vec![
         Span::styled("[?]", Style::default().fg(Color::Yellow)),
@@ -216,7 +261,7 @@ fn draw_status_popup(frame: &mut Frame, kind: StatusKind, message: &str) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(color))
+                .border_style(Style::default().fg(color)),
         )
         .style(Style::default().fg(color))
         .alignment(Alignment::Center);
@@ -226,14 +271,15 @@ fn draw_status_popup(frame: &mut Frame, kind: StatusKind, message: &str) {
 
 fn draw_help_popup(frame: &mut Frame) {
     let area = centered_rect(70, 75, frame.size());
-    
+
     frame.render_widget(Clear, area);
-    
+
     let help_text = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Global Commands", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Global Commands",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  1-4            - Jump to specific tab (Containers/Images/Volumes/Networks)"),
         Line::from("  Tab/Shift+Tab  - Cycle through tabs"),
         Line::from("  q, Ctrl+c      - Quit application"),
@@ -241,9 +287,10 @@ fn draw_help_popup(frame: &mut Frame) {
         Line::from("  ?              - Show this help"),
         Line::from("  /              - Search/Filter (Coming soon)"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Navigation", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Navigation",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  j, ↓           - Move down"),
         Line::from("  k, ↑           - Move up"),
         Line::from("  PageUp/Down    - Page navigation"),
@@ -252,9 +299,10 @@ fn draw_help_popup(frame: &mut Frame) {
         Line::from("  a              - Select all / Deselect all (toggle)"),
         Line::from("  Esc            - Clear selection / Close dialogs"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Container Operations (Containers tab only)", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Container Operations (Containers tab only)",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  s              - Start/Stop container"),
         Line::from("  S (Shift+s)    - View container stats (CPU/Memory)"),
         Line::from("  R              - Restart container"),
@@ -262,59 +310,64 @@ fn draw_help_popup(frame: &mut Frame) {
         Line::from("  l              - View logs"),
         Line::from("  i              - Inspect (JSON)"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Image Operations", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Image Operations",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  p              - Pull image"),
         Line::from("  d, Delete      - Remove image"),
         Line::from("  i              - Inspect (JSON)"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Volume/Network Operations", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Volume/Network Operations",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  d, Delete      - Remove selected item"),
         Line::from("  i              - Inspect (JSON)"),
         Line::from(""),
         Line::from("Press any key to close this help"),
     ];
-    
+
     let help = Paragraph::new(help_text)
         .block(
             Block::default()
                 .title(" Help ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
+                .border_style(Style::default().fg(Color::Cyan)),
         )
         .alignment(Alignment::Left);
-    
+
     frame.render_widget(help, area);
 }
 
 fn draw_delete_confirmation(frame: &mut Frame, tab: AppTab, count: usize) {
     let area = centered_rect(50, 20, frame.size());
-    
+
     frame.render_widget(Clear, area);
-    
+
     let item_type = match tab {
         AppTab::Containers => "container",
         AppTab::Images => "image",
         AppTab::Volumes => "volume",
         AppTab::Networks => "network",
     };
-    
+
     let item_type_plural = match tab {
         AppTab::Containers => "containers",
-        AppTab::Images => "images", 
+        AppTab::Images => "images",
         AppTab::Volumes => "volumes",
         AppTab::Networks => "networks",
     };
-    
+
     let message = if count > 1 {
-        format!("Are you sure you want to delete {} {}?", count, item_type_plural)
+        format!(
+            "Are you sure you want to delete {} {}?",
+            count, item_type_plural
+        )
     } else {
         format!("Are you sure you want to delete this {}?", item_type)
     };
-    
+
     let text = vec![
         Line::from(""),
         Line::from(message),
@@ -326,15 +379,15 @@ fn draw_delete_confirmation(frame: &mut Frame, tab: AppTab, count: usize) {
             Span::raw(" No"),
         ]),
     ];
-    
+
     let confirmation = Paragraph::new(text)
         .block(
             Block::default()
                 .title(" Confirm Delete ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
+                .border_style(Style::default().fg(Color::Yellow)),
         )
         .alignment(Alignment::Center);
-    
+
     frame.render_widget(confirmation, area);
 }

@@ -2,15 +2,15 @@ use anyhow::Result;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dkr::App;
 use dkr::app::AppTab;
 use dkr::docker::ContainerSummary;
-use dkr::event::{handle_key_event, Action};
+use dkr::event::{Action, handle_key_event};
 use dkr::handlers;
 use dkr::ui::render;
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::time::Duration;
 use tokio::time;
@@ -67,18 +67,25 @@ async fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
 ) -> Result<()> {
-    
     // Initial data fetch
     let mut containers = Vec::new();
     let mut images = Vec::new();
     let mut volumes = None;
     let mut networks = Vec::new();
-    
+
     // Fetch initial data
-    fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
+    fetch_data(
+        app,
+        &mut containers,
+        &mut images,
+        &mut volumes,
+        &mut networks,
+    )
+    .await?;
 
     // Start refresh timer
-    let mut refresh_interval = time::interval(Duration::from_secs(app.config.general.refresh_interval));
+    let mut refresh_interval =
+        time::interval(Duration::from_secs(app.config.general.refresh_interval));
 
     loop {
         // Draw UI
@@ -105,7 +112,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                             app.show_help = false;
                             continue;
                         }
-                        
+
                         if app.show_confirm_delete {
                             // Handle delete confirmation
                             use crossterm::event::KeyCode;
@@ -125,7 +132,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                             continue;
                         }
-                        
+
                         if app.show_inspect {
                             // Handle inspect viewer keys
                             if let Some(ref mut viewer) = app.inspect_viewer {
@@ -146,7 +153,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                             continue;
                         }
-                        
+
                         if app.show_logs {
                             // Handle log viewer keys
                             if let Some(ref mut viewer) = app.log_viewer {
@@ -183,14 +190,35 @@ async fn run_app<B: ratatui::backend::Backend>(
                             }
                             continue;
                         }
-                        
+
+                        if app.search_mode {
+                            // Handle search input
+                            use crossterm::event::KeyCode;
+                            match key.code {
+                                KeyCode::Esc => {
+                                    app.cancel_search();
+                                }
+                                KeyCode::Enter => {
+                                    app.apply_search();
+                                }
+                                KeyCode::Backspace => {
+                                    app.search_pop();
+                                }
+                                KeyCode::Char(c) => {
+                                    app.search_push(c);
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         if let Some(action) = handle_key_event(key) {
                             if !handle_action(app, action, &containers, &images, &volumes, &networks).await? {
                                 break;
                             }
-                            
+
                             // Refresh data after container operations or tab switches
-                            if matches!(action, Action::StartStop | Action::Restart | Action::Delete 
+                            if matches!(action, Action::StartStop | Action::Restart | Action::Delete
                                 | Action::NextTab | Action::PreviousTab | Action::SwitchToTab(_)) {
                                 fetch_data(app, &mut containers, &mut images, &mut volumes, &mut networks).await?;
                             }
@@ -216,31 +244,23 @@ async fn fetch_data(
 ) -> Result<()> {
     let result = {
         let docker = app.docker.lock().await;
-        
+
         match app.current_tab {
-            AppTab::Containers => {
-                docker.list_containers(true).await.map(|data| {
-                    *containers = data;
-                })
-            }
-            AppTab::Images => {
-                docker.list_images().await.map(|data| {
-                    *images = data;
-                })
-            }
-            AppTab::Volumes => {
-                docker.list_volumes().await.map(|data| {
-                    *volumes = Some(data);
-                })
-            }
-            AppTab::Networks => {
-                docker.list_networks().await.map(|data| {
-                    *networks = data;
-                })
-            }
+            AppTab::Containers => docker.list_containers(true).await.map(|data| {
+                *containers = data;
+            }),
+            AppTab::Images => docker.list_images().await.map(|data| {
+                *images = data;
+            }),
+            AppTab::Volumes => docker.list_volumes().await.map(|data| {
+                *volumes = Some(data);
+            }),
+            AppTab::Networks => docker.list_networks().await.map(|data| {
+                *networks = data;
+            }),
         }
     };
-    
+
     // Validate selected_index after data refresh
     match app.current_tab {
         AppTab::Containers => {
@@ -256,9 +276,11 @@ async fn fetch_data(
         AppTab::Volumes => {
             if let Some(response) = volumes
                 && let Some(vols) = &response.volumes
-                    && app.selected_index >= vols.len() && !vols.is_empty() {
-                        app.selected_index = vols.len() - 1;
-                    }
+                && app.selected_index >= vols.len()
+                && !vols.is_empty()
+            {
+                app.selected_index = vols.len() - 1;
+            }
         }
         AppTab::Networks => {
             if app.selected_index >= networks.len() && !networks.is_empty() {
@@ -266,7 +288,7 @@ async fn fetch_data(
             }
         }
     }
-    
+
     if let Err(e) = result {
         let msg = match app.current_tab {
             AppTab::Containers => format!("Failed to fetch containers: {}", e),
@@ -276,7 +298,7 @@ async fn fetch_data(
         };
         app.set_error(msg);
     }
-    
+
     Ok(())
 }
 
@@ -301,7 +323,12 @@ async fn handle_action(
         }
 
         // Navigation
-        Action::Up | Action::Down | Action::PageUp | Action::PageDown | Action::Home | Action::End => {
+        Action::Up
+        | Action::Down
+        | Action::PageUp
+        | Action::PageDown
+        | Action::Home
+        | Action::End => {
             handlers::handle_navigation(app, action, containers, images, volumes, networks);
         }
 
@@ -348,12 +375,15 @@ async fn handle_action(
             app.clear_status();
         }
         Action::Search => {
-            // Search not yet implemented
+            app.start_search();
         }
         Action::Escape => {
             app.clear_status();
             app.show_help = false;
             app.clear_selection();
+            if !app.search_query.is_empty() {
+                app.search_query.clear();
+            }
         }
 
         Action::Select => {

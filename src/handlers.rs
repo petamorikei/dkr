@@ -85,33 +85,33 @@ pub fn handle_selection(
     networks: &[Network],
 ) {
     match action {
-        Action::MultiSelect => {
-            match app.current_tab {
-                AppTab::Containers => {
-                    if let Some(container) = containers.get(app.selected_index) {
-                        app.toggle_selection(container.id.clone());
-                    }
-                }
-                AppTab::Images => {
-                    if let Some(image) = images.get(app.selected_index) {
-                        app.toggle_selection(image.id.clone());
-                    }
-                }
-                AppTab::Volumes => {
-                    if let Some(response) = volumes
-                        && let Some(vols) = &response.volumes
-                            && let Some(volume) = vols.get(app.selected_index) {
-                                app.toggle_selection(volume.name.clone());
-                            }
-                }
-                AppTab::Networks => {
-                    if let Some(network) = networks.get(app.selected_index)
-                        && let Some(id) = &network.id {
-                            app.toggle_selection(id.clone());
-                        }
+        Action::MultiSelect => match app.current_tab {
+            AppTab::Containers => {
+                if let Some(container) = containers.get(app.selected_index) {
+                    app.toggle_selection(container.id.clone());
                 }
             }
-        }
+            AppTab::Images => {
+                if let Some(image) = images.get(app.selected_index) {
+                    app.toggle_selection(image.id.clone());
+                }
+            }
+            AppTab::Volumes => {
+                if let Some(response) = volumes
+                    && let Some(vols) = &response.volumes
+                    && let Some(volume) = vols.get(app.selected_index)
+                {
+                    app.toggle_selection(volume.name.clone());
+                }
+            }
+            AppTab::Networks => {
+                if let Some(network) = networks.get(app.selected_index)
+                    && let Some(id) = &network.id
+                {
+                    app.toggle_selection(id.clone());
+                }
+            }
+        },
         Action::SelectAll => {
             // Count total items in current tab
             let total_items = match app.current_tab {
@@ -143,11 +143,12 @@ pub fn handle_selection(
                     }
                     AppTab::Volumes => {
                         if let Some(response) = volumes
-                            && let Some(vols) = &response.volumes {
-                                for volume in vols {
-                                    app.selected_items.insert(volume.name.clone());
-                                }
+                            && let Some(vols) = &response.volumes
+                        {
+                            for volume in vols {
+                                app.selected_items.insert(volume.name.clone());
                             }
+                        }
                     }
                     AppTab::Networks => {
                         for network in networks {
@@ -175,10 +176,16 @@ pub async fn handle_container_operations(
                 let docker = app.docker.lock().await;
                 match container.state.as_str() {
                     "Running" => {
-                        docker.stop_container(&container.id).await.context("Failed to stop container")?;
+                        docker
+                            .stop_container(&container.id)
+                            .await
+                            .context("Failed to stop container")?;
                     }
                     _ => {
-                        docker.start_container(&container.id).await.context("Failed to start container")?;
+                        docker
+                            .start_container(&container.id)
+                            .await
+                            .context("Failed to start container")?;
                     }
                 }
             }
@@ -186,7 +193,10 @@ pub async fn handle_container_operations(
         Action::Restart => {
             if let Some(container) = containers.get(app.selected_index) {
                 let docker = app.docker.lock().await;
-                docker.restart_container(&container.id).await.context("Failed to restart container")?;
+                docker
+                    .restart_container(&container.id)
+                    .await
+                    .context("Failed to restart container")?;
             }
         }
         _ => {}
@@ -260,15 +270,16 @@ pub async fn handle_delete_action(
             if app.has_selection() {
                 ids_to_delete = app.selected_items.iter().cloned().collect();
             } else if let Some(response) = volumes
-                && let Some(vols) = &response.volumes {
-                    if app.selected_index >= vols.len() {
-                        app.selected_index = vols.len().saturating_sub(1);
-                    }
-
-                    if let Some(volume) = vols.get(app.selected_index) {
-                        ids_to_delete.push(volume.name.clone());
-                    }
+                && let Some(vols) = &response.volumes
+            {
+                if app.selected_index >= vols.len() {
+                    app.selected_index = vols.len().saturating_sub(1);
                 }
+
+                if let Some(volume) = vols.get(app.selected_index) {
+                    ids_to_delete.push(volume.name.clone());
+                }
+            }
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
@@ -292,9 +303,10 @@ pub async fn handle_delete_action(
             if app.has_selection() {
                 ids_to_delete = app.selected_items.iter().cloned().collect();
             } else if let Some(network) = networks.get(app.selected_index)
-                && let Some(id) = &network.id {
-                    ids_to_delete.push(id.clone());
-                }
+                && let Some(id) = &network.id
+            {
+                ids_to_delete.push(id.clone());
+            }
 
             if !ids_to_delete.is_empty() {
                 if app.config.general.confirm_delete {
@@ -320,12 +332,10 @@ pub async fn handle_delete_action(
 }
 
 /// Handle view logs action
-pub async fn handle_view_logs(
-    app: &mut App,
-    containers: &[ContainerSummary],
-) -> Result<()> {
+pub async fn handle_view_logs(app: &mut App, containers: &[ContainerSummary]) -> Result<()> {
     if app.current_tab == AppTab::Containers
-        && let Some(container) = containers.get(app.selected_index) {
+        && let Some(container) = containers.get(app.selected_index)
+    {
         let logs_result = {
             let docker = app.docker.lock().await;
             docker.get_container_logs(&container.id, Some(100)).await
@@ -346,7 +356,6 @@ pub async fn handle_view_logs(
     Ok(())
 }
 
-
 /// Handle inspect action
 pub async fn handle_inspect(
     app: &mut App,
@@ -365,8 +374,8 @@ pub async fn handle_inspect(
 
                 match result {
                     Ok(inspect_data) => {
-                        let json_value = serde_json::to_value(&inspect_data)
-                            .unwrap_or(serde_json::Value::Null);
+                        let json_value =
+                            serde_json::to_value(&inspect_data).unwrap_or(serde_json::Value::Null);
                         app.inspect_viewer = Some(InspectViewer::new(
                             format!("Container: {}", container.name),
                             json_value,
@@ -391,13 +400,15 @@ pub async fn handle_inspect(
 
                 match result {
                     Ok(inspect_data) => {
-                        let json_value = serde_json::to_value(&inspect_data)
-                            .unwrap_or(serde_json::Value::Null);
+                        let json_value =
+                            serde_json::to_value(&inspect_data).unwrap_or(serde_json::Value::Null);
                         let title = image
                             .repo_tags
                             .first()
                             .map(|tag| format!("Image: {}", tag))
-                            .unwrap_or_else(|| format!("Image: {}", image_id.chars().take(12).collect::<String>()));
+                            .unwrap_or_else(|| {
+                                format!("Image: {}", image_id.chars().take(12).collect::<String>())
+                            });
                         app.inspect_viewer = Some(InspectViewer::new(title, json_value));
                         app.show_inspect = true;
                     }
@@ -409,33 +420,34 @@ pub async fn handle_inspect(
         }
         AppTab::Volumes => {
             if let Some(response) = volumes
-                && let Some(vols) = &response.volumes {
-                    if app.selected_index >= vols.len() {
-                        app.selected_index = vols.len().saturating_sub(1);
-                    }
+                && let Some(vols) = &response.volumes
+            {
+                if app.selected_index >= vols.len() {
+                    app.selected_index = vols.len().saturating_sub(1);
+                }
 
-                    if let Some(volume) = vols.get(app.selected_index) {
-                        let result = {
-                            let docker = app.docker.lock().await;
-                            docker.inspect_volume(&volume.name).await
-                        };
+                if let Some(volume) = vols.get(app.selected_index) {
+                    let result = {
+                        let docker = app.docker.lock().await;
+                        docker.inspect_volume(&volume.name).await
+                    };
 
-                        match result {
-                            Ok(inspect_data) => {
-                                let json_value = serde_json::to_value(&inspect_data)
-                                    .unwrap_or(serde_json::Value::Null);
-                                app.inspect_viewer = Some(InspectViewer::new(
-                                    format!("Volume: {}", volume.name),
-                                    json_value,
-                                ));
-                                app.show_inspect = true;
-                            }
-                            Err(e) => {
-                                app.set_error(format!("Failed to inspect volume: {}", e));
-                            }
+                    match result {
+                        Ok(inspect_data) => {
+                            let json_value = serde_json::to_value(&inspect_data)
+                                .unwrap_or(serde_json::Value::Null);
+                            app.inspect_viewer = Some(InspectViewer::new(
+                                format!("Volume: {}", volume.name),
+                                json_value,
+                            ));
+                            app.show_inspect = true;
+                        }
+                        Err(e) => {
+                            app.set_error(format!("Failed to inspect volume: {}", e));
                         }
                     }
                 }
+            }
         }
         AppTab::Networks => {
             if app.selected_index >= networks.len() {
@@ -443,8 +455,7 @@ pub async fn handle_inspect(
             }
 
             if let Some(network) = networks.get(app.selected_index) {
-                let network_id = network.id.clone()
-                    .unwrap_or_else(String::new);
+                let network_id = network.id.clone().unwrap_or_else(String::new);
 
                 let result = {
                     let docker = app.docker.lock().await;
@@ -453,8 +464,8 @@ pub async fn handle_inspect(
 
                 match result {
                     Ok(inspect_data) => {
-                        let json_value = serde_json::to_value(&inspect_data)
-                            .unwrap_or(serde_json::Value::Null);
+                        let json_value =
+                            serde_json::to_value(&inspect_data).unwrap_or(serde_json::Value::Null);
                         let title = network
                             .name
                             .as_ref()
@@ -508,10 +519,7 @@ pub async fn confirm_delete(app: &mut App) -> Result<()> {
 }
 
 /// Handle viewing container statistics
-pub async fn handle_view_stats(
-    app: &mut App,
-    containers: &[ContainerSummary],
-) -> Result<()> {
+pub async fn handle_view_stats(app: &mut App, containers: &[ContainerSummary]) -> Result<()> {
     if app.current_tab != AppTab::Containers {
         return Ok(());
     }
@@ -540,10 +548,7 @@ pub async fn handle_view_stats(
 }
 
 /// Handle pulling a Docker image
-pub async fn handle_pull_image(
-    app: &mut App,
-    images: &[ImageSummary],
-) -> Result<()> {
+pub async fn handle_pull_image(app: &mut App, images: &[ImageSummary]) -> Result<()> {
     if app.current_tab != AppTab::Images {
         return Ok(());
     }

@@ -1,13 +1,13 @@
 use super::utils::centered_rect;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
-const MAX_LOG_LINES: usize = 10000;  // Maximum number of log lines to keep in memory
+const MAX_LOG_LINES: usize = 10000; // Maximum number of log lines to keep in memory
 
 #[derive(Clone)]
 pub struct LogViewer {
@@ -35,13 +35,11 @@ impl LogViewer {
         // Limit the number of logs to prevent memory issues
         if logs.len() > MAX_LOG_LINES {
             let skip_count = logs.len() - MAX_LOG_LINES;
-            self.logs = logs.into_iter()
-                .skip(skip_count)
-                .collect();
+            self.logs = logs.into_iter().skip(skip_count).collect();
         } else {
             self.logs = logs;
         }
-        
+
         if self.is_following && !self.logs.is_empty() {
             self.scroll_to_bottom();
         }
@@ -49,12 +47,12 @@ impl LogViewer {
 
     pub fn append_logs(&mut self, new_logs: Vec<String>) {
         self.logs.extend(new_logs);
-        
+
         // Trim logs if they exceed the maximum limit
         if self.logs.len() > MAX_LOG_LINES {
             let excess = self.logs.len() - MAX_LOG_LINES;
             self.logs.drain(0..excess);
-            
+
             // Adjust scroll position if logs were removed
             if self.scroll_position >= excess {
                 self.scroll_position -= excess;
@@ -62,7 +60,7 @@ impl LogViewer {
                 self.scroll_position = 0;
             }
         }
-        
+
         if self.is_following {
             self.scroll_to_bottom();
         }
@@ -77,7 +75,7 @@ impl LogViewer {
     pub fn scroll_down(&mut self, amount: usize) {
         let max_scroll = self.logs.len().saturating_sub(1);
         self.scroll_position = (self.scroll_position + amount).min(max_scroll);
-        
+
         if self.scroll_position >= max_scroll {
             self.is_following = true;
         }
@@ -164,9 +162,9 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(0),     // Logs
-            Constraint::Length(2),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(0),    // Logs
+            Constraint::Length(2), // Footer
         ])
         .split(area);
 
@@ -174,9 +172,13 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
     let header_text = format!(
         " Logs: {} {} ",
         viewer.container_name,
-        if viewer.is_following { "[FOLLOWING]" } else { "[PAUSED]" }
+        if viewer.is_following {
+            "[FOLLOWING]"
+        } else {
+            "[PAUSED]"
+        }
     );
-    
+
     let header = Paragraph::new(header_text)
         .block(Block::default().borders(Borders::ALL))
         .style(Style::default().fg(if viewer.is_following {
@@ -184,11 +186,12 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
         } else {
             Color::Yellow
         }));
-    
+
     frame.render_widget(header, chunks[0]);
 
     // Logs
-    let log_items: Vec<ListItem> = viewer.logs
+    let log_items: Vec<ListItem> = viewer
+        .logs
         .iter()
         .map(|log| {
             let content = if let Some(ref term) = viewer.search_term {
@@ -212,7 +215,7 @@ pub fn draw_log_viewer(frame: &mut Frame, viewer: &mut LogViewer, area: Rect) {
             } else {
                 Line::from(log.as_str())
             };
-            
+
             ListItem::new(content)
         })
         .collect();

@@ -163,7 +163,12 @@ impl From<BollardContainer> for ContainerSummary {
             })
             .collect();
 
-        let state = container.state.as_deref().unwrap_or("unknown").parse().unwrap_or(ContainerState::Unknown);
+        let state = container
+            .state
+            .as_deref()
+            .unwrap_or("unknown")
+            .parse()
+            .unwrap_or(ContainerState::Unknown);
 
         Self {
             id: container.id.unwrap_or_default(),
@@ -320,9 +325,18 @@ mod tests {
 
     #[test]
     fn test_container_state_conversion() {
-        assert_eq!("running".parse::<ContainerState>().unwrap(), ContainerState::Running);
-        assert_eq!("EXITED".parse::<ContainerState>().unwrap(), ContainerState::Exited);
-        assert_eq!("unknown".parse::<ContainerState>().unwrap(), ContainerState::Unknown);
+        assert_eq!(
+            "running".parse::<ContainerState>().unwrap(),
+            ContainerState::Running
+        );
+        assert_eq!(
+            "EXITED".parse::<ContainerState>().unwrap(),
+            ContainerState::Exited
+        );
+        assert_eq!(
+            "unknown".parse::<ContainerState>().unwrap(),
+            ContainerState::Unknown
+        );
 
         assert_eq!(ContainerState::Running.as_str(), "Running");
         assert_eq!(ContainerState::Exited.as_str(), "Exited");

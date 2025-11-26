@@ -1,11 +1,11 @@
 use crate::app::App;
 use crate::docker::ContainerSummary;
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::Span,
-    widgets::{Block, Borders, Cell, Row, Table, TableState, Paragraph},
-    Frame,
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
 
 pub fn draw_containers_tab(
@@ -14,6 +14,16 @@ pub fn draw_containers_tab(
     containers: &[ContainerSummary],
     area: Rect,
 ) {
+    // Filter containers based on search query
+    let filtered: Vec<_> = containers
+        .iter()
+        .filter(|c| {
+            app.matches_search(&c.name)
+                || app.matches_search(&c.image)
+                || app.matches_search(c.state.as_str())
+        })
+        .collect();
+
     let headers = Row::new(vec![
         Cell::from("Name"),
         Cell::from("Status"),
@@ -24,7 +34,7 @@ pub fn draw_containers_tab(
     .style(Style::default().add_modifier(Modifier::BOLD))
     .height(1);
 
-    let rows: Vec<Row> = containers
+    let rows: Vec<Row> = filtered
         .iter()
         .map(|container| {
             let status_color = app.theme.get_state_color(&container.state);
@@ -33,22 +43,21 @@ pub fn draw_containers_tab(
                 .ports
                 .iter()
                 .filter_map(|p| {
-                    p.public_port.map(|pub_port| {
-                        format!("{}:{}", pub_port, p.private_port)
-                    })
+                    p.public_port
+                        .map(|pub_port| format!("{}:{}", pub_port, p.private_port))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
 
             let created = format_timestamp(container.created);
-            
+
             // Add checkbox indicator for multi-selection
             let selected_mark = if app.selected_items.contains(&container.id) {
                 "[✓] "
             } else {
                 "[ ] "
             };
-            
+
             let name_with_mark = format!("{}{}", selected_mark, container.name);
 
             Row::new(vec![
@@ -73,17 +82,29 @@ pub fn draw_containers_tab(
         Constraint::Percentage(15),
     ];
 
+    let title = if app.search_query.is_empty() {
+        format!(" Containers ({}) ", filtered.len())
+    } else {
+        format!(
+            " Containers ({}/{}) [{}] ",
+            filtered.len(),
+            containers.len(),
+            app.search_query
+        )
+    };
+
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" Containers ({}) ", containers.len()))
-        )
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
-    state.select(Some(app.selected_index));
+    let selected = app.selected_index.min(filtered.len().saturating_sub(1));
+    state.select(if filtered.is_empty() {
+        None
+    } else {
+        Some(selected)
+    });
 
     frame.render_stateful_widget(table, area, &mut state);
 }
@@ -97,15 +118,20 @@ pub fn draw_images_tab(
     // Show loading indicator if images are empty
     if images.is_empty() {
         let loading = Paragraph::new("Loading...")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Images ")
-            )
+            .block(Block::default().borders(Borders::ALL).title(" Images "))
             .style(Style::default().fg(Color::Yellow));
         frame.render_widget(loading, area);
         return;
     }
+
+    // Filter images based on search query
+    let filtered: Vec<_> = images
+        .iter()
+        .filter(|img| {
+            let repo_tag = img.repo_tags.first().cloned().unwrap_or_default();
+            app.matches_search(&repo_tag) || app.matches_search(&img.id)
+        })
+        .collect();
 
     let headers = Row::new(vec![
         Cell::from("Repository"),
@@ -117,7 +143,7 @@ pub fn draw_images_tab(
     .style(Style::default().add_modifier(Modifier::BOLD))
     .height(1);
 
-    let rows: Vec<Row> = images
+    let rows: Vec<Row> = filtered
         .iter()
         .map(|image| {
             // Add checkbox indicator for multi-selection
@@ -126,21 +152,18 @@ pub fn draw_images_tab(
             } else {
                 "[ ] "
             };
-            let repo_tags = image.repo_tags
+            let repo_tags = image
+                .repo_tags
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "<none>".to_string());
-            
+
             let parts: Vec<&str> = repo_tags.split(':').collect();
             let repo = format!("{}{}", selected_mark, parts.first().unwrap_or(&"<none>"));
             let tag = parts.get(1).unwrap_or(&"<none>").to_string();
-            
-            let id = image.id
-                .chars()
-                .skip(7)
-                .take(12)
-                .collect::<String>();
-            
+
+            let id = image.id.chars().skip(7).take(12).collect::<String>();
+
             let created = format_timestamp(image.created);
             let size = format_size(image.size);
 
@@ -163,17 +186,29 @@ pub fn draw_images_tab(
         Constraint::Percentage(15),
     ];
 
+    let title = if app.search_query.is_empty() {
+        format!(" Images ({}) ", filtered.len())
+    } else {
+        format!(
+            " Images ({}/{}) [{}] ",
+            filtered.len(),
+            images.len(),
+            app.search_query
+        )
+    };
+
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" Images ({}) ", images.len()))
-        )
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
-    state.select(Some(app.selected_index));
+    let selected = app.selected_index.min(filtered.len().saturating_sub(1));
+    state.select(if filtered.is_empty() {
+        None
+    } else {
+        Some(selected)
+    });
 
     frame.render_stateful_widget(table, area, &mut state);
 }
@@ -187,11 +222,7 @@ pub fn draw_volumes_tab(
     // Show loading indicator if volumes haven't been fetched yet
     if volumes_response.is_none() {
         let loading = Paragraph::new("Loading...")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Volumes ")
-            )
+            .block(Block::default().borders(Borders::ALL).title(" Volumes "))
             .style(Style::default().fg(Color::Yellow));
         frame.render_widget(loading, area);
         return;
@@ -199,6 +230,16 @@ pub fn draw_volumes_tab(
 
     if let Some(response) = volumes_response {
         if let Some(volumes) = &response.volumes {
+            // Filter volumes based on search query
+            let filtered: Vec<_> = volumes
+                .iter()
+                .filter(|v| {
+                    app.matches_search(&v.name)
+                        || app.matches_search(&v.driver)
+                        || app.matches_search(&v.mountpoint)
+                })
+                .collect();
+
             let headers = Row::new(vec![
                 Cell::from("Name"),
                 Cell::from("Driver"),
@@ -208,7 +249,7 @@ pub fn draw_volumes_tab(
             .style(Style::default().add_modifier(Modifier::BOLD))
             .height(1);
 
-            let rows: Vec<Row> = volumes
+            let rows: Vec<Row> = filtered
                 .iter()
                 .map(|volume| {
                     // Add checkbox indicator for multi-selection
@@ -220,7 +261,11 @@ pub fn draw_volumes_tab(
                     let name = format!("{}{}", selected_mark, volume.name);
                     let driver = volume.driver.clone();
                     let mountpoint = volume.mountpoint.clone();
-                    let created = volume.created_at.as_ref().unwrap_or(&"<unknown>".to_string()).clone();
+                    let created = volume
+                        .created_at
+                        .as_ref()
+                        .unwrap_or(&"<unknown>".to_string())
+                        .clone();
 
                     Row::new(vec![
                         Cell::from(name),
@@ -239,17 +284,29 @@ pub fn draw_volumes_tab(
                 Constraint::Percentage(20),
             ];
 
+            let title = if app.search_query.is_empty() {
+                format!(" Volumes ({}) ", filtered.len())
+            } else {
+                format!(
+                    " Volumes ({}/{}) [{}] ",
+                    filtered.len(),
+                    volumes.len(),
+                    app.search_query
+                )
+            };
+
             let table = Table::new(rows, widths)
                 .header(headers)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(format!(" Volumes ({}) ", volumes.len()))
-                )
+                .block(Block::default().borders(Borders::ALL).title(title))
                 .highlight_style(app.theme.selected_style);
 
             let mut state = TableState::default();
-            state.select(Some(app.selected_index));
+            let selected = app.selected_index.min(filtered.len().saturating_sub(1));
+            state.select(if filtered.is_empty() {
+                None
+            } else {
+                Some(selected)
+            });
 
             frame.render_stateful_widget(table, area, &mut state);
         } else {
@@ -269,15 +326,21 @@ pub fn draw_networks_tab(
     // Show loading indicator if networks are empty
     if networks.is_empty() {
         let loading = Paragraph::new("Loading...")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Networks ")
-            )
+            .block(Block::default().borders(Borders::ALL).title(" Networks "))
             .style(Style::default().fg(Color::Yellow));
         frame.render_widget(loading, area);
         return;
     }
+
+    // Filter networks based on search query
+    let filtered: Vec<_> = networks
+        .iter()
+        .filter(|n| {
+            let name = n.name.as_deref().unwrap_or("");
+            let driver = n.driver.as_deref().unwrap_or("");
+            app.matches_search(name) || app.matches_search(driver)
+        })
+        .collect();
 
     let headers = Row::new(vec![
         Cell::from("Name"),
@@ -289,7 +352,7 @@ pub fn draw_networks_tab(
     .style(Style::default().add_modifier(Modifier::BOLD))
     .height(1);
 
-    let rows: Vec<Row> = networks
+    let rows: Vec<Row> = filtered
         .iter()
         .map(|network| {
             // Add checkbox indicator for multi-selection
@@ -299,17 +362,30 @@ pub fn draw_networks_tab(
             } else {
                 "[ ] "
             };
-            
-            let name = network.name.as_ref().unwrap_or(&"<none>".to_string()).clone();
+
+            let name = network
+                .name
+                .as_ref()
+                .unwrap_or(&"<none>".to_string())
+                .clone();
             let name_with_mark = format!("{}{}", selected_mark, name);
-            
-            let id = network_id
-                .chars()
-                .take(12)
-                .collect::<String>();
-            let driver = network.driver.as_ref().unwrap_or(&"<none>".to_string()).clone();
-            let scope = network.scope.as_ref().unwrap_or(&"<none>".to_string()).clone();
-            let created = network.created.as_ref().unwrap_or(&"<unknown>".to_string()).clone();
+
+            let id = network_id.chars().take(12).collect::<String>();
+            let driver = network
+                .driver
+                .as_ref()
+                .unwrap_or(&"<none>".to_string())
+                .clone();
+            let scope = network
+                .scope
+                .as_ref()
+                .unwrap_or(&"<none>".to_string())
+                .clone();
+            let created = network
+                .created
+                .as_ref()
+                .unwrap_or(&"<unknown>".to_string())
+                .clone();
 
             Row::new(vec![
                 Cell::from(name_with_mark),
@@ -330,17 +406,29 @@ pub fn draw_networks_tab(
         Constraint::Percentage(25),
     ];
 
+    let title = if app.search_query.is_empty() {
+        format!(" Networks ({}) ", filtered.len())
+    } else {
+        format!(
+            " Networks ({}/{}) [{}] ",
+            filtered.len(),
+            networks.len(),
+            app.search_query
+        )
+    };
+
     let table = Table::new(rows, widths)
         .header(headers)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" Networks ({}) ", networks.len()))
-        )
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(app.theme.selected_style);
 
     let mut state = TableState::default();
-    state.select(Some(app.selected_index));
+    let selected = app.selected_index.min(filtered.len().saturating_sub(1));
+    state.select(if filtered.is_empty() {
+        None
+    } else {
+        Some(selected)
+    });
 
     frame.render_stateful_widget(table, area, &mut state);
 }
@@ -350,23 +438,22 @@ fn draw_empty_message(frame: &mut Frame, message: &str, area: Rect) {
         .block(Block::default().borders(Borders::ALL))
         .style(Style::default().fg(Color::Gray))
         .alignment(ratatui::layout::Alignment::Center);
-    
+
     frame.render_widget(paragraph, area);
 }
 
 fn format_timestamp(timestamp: i64) -> String {
     use chrono::{DateTime, Local, Utc};
-    
+
     if timestamp == 0 {
         return "<unknown>".to_string();
     }
-    
-    let dt = DateTime::<Utc>::from_timestamp(timestamp, 0)
-        .unwrap_or_else(Utc::now);
+
+    let dt = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now);
     let local_dt: DateTime<Local> = dt.into();
     let now = Local::now();
     let duration = now.signed_duration_since(local_dt);
-    
+
     if duration.num_days() > 0 {
         format!("{} days ago", duration.num_days())
     } else if duration.num_hours() > 0 {
@@ -382,11 +469,11 @@ fn format_size(size: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = size as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     format!("{:.1} {}", size, UNITS[unit_index])
 }

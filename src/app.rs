@@ -111,6 +111,10 @@ pub struct App {
     pub stats_viewer: Option<StatsViewer>,
     /// Current status message to display
     pub status_message: Option<StatusMessage>,
+    /// Whether search/filter mode is active
+    pub search_mode: bool,
+    /// Current search query
+    pub search_query: String,
 }
 
 impl App {
@@ -144,6 +148,8 @@ impl App {
             inspect_viewer: None,
             stats_viewer: None,
             status_message: None,
+            search_mode: false,
+            search_query: String::new(),
         })
     }
 
@@ -261,6 +267,46 @@ impl App {
     /// Clears the current status message
     pub fn clear_status(&mut self) {
         self.status_message = None;
+    }
+
+    /// Enters search mode
+    pub fn start_search(&mut self) {
+        self.search_mode = true;
+        self.search_query.clear();
+    }
+
+    /// Exits search mode and clears the query
+    pub fn cancel_search(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.selected_index = 0;
+    }
+
+    /// Applies the current search and exits search mode
+    pub fn apply_search(&mut self) {
+        self.search_mode = false;
+        self.selected_index = 0;
+    }
+
+    /// Adds a character to the search query
+    pub fn search_push(&mut self, c: char) {
+        self.search_query.push(c);
+        self.selected_index = 0;
+    }
+
+    /// Removes the last character from the search query
+    pub fn search_pop(&mut self) {
+        self.search_query.pop();
+        self.selected_index = 0;
+    }
+
+    /// Returns true if an item matches the current search query
+    pub fn matches_search(&self, text: &str) -> bool {
+        if self.search_query.is_empty() {
+            return true;
+        }
+        text.to_lowercase()
+            .contains(&self.search_query.to_lowercase())
     }
 
     /// Signals that the application should quit

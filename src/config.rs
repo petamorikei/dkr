@@ -139,10 +139,10 @@ impl Config {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        
+
         let content = toml::to_string_pretty(self)?;
         fs::write(&config_path, content)?;
-        
+
         Ok(())
     }
 

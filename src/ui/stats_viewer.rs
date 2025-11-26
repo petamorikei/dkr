@@ -1,11 +1,11 @@
 use super::utils::centered_rect;
 use crate::docker::ContainerStats;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, Paragraph},
-    Frame,
 };
 
 #[derive(Clone)]
@@ -139,8 +139,8 @@ pub fn draw_stats_popup(frame: &mut Frame, viewer: &StatsViewer) {
         width: area.width.saturating_sub(4),
         height: 1,
     };
-    let help = Paragraph::new("Press 'q' or 'Esc' to close")
-        .style(Style::default().fg(Color::Gray));
+    let help =
+        Paragraph::new("Press 'q' or 'Esc' to close").style(Style::default().fg(Color::Gray));
     frame.render_widget(help, help_area);
 }
 

@@ -2,11 +2,11 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use bollard::Docker;
 use bollard::container::{ListContainersOptions, RemoveContainerOptions, StopContainerOptions};
 use bollard::image::ListImagesOptions;
 use bollard::network::ListNetworksOptions;
 use bollard::volume::ListVolumesOptions;
-use bollard::Docker;
 
 use super::container::{ContainerInfo, ContainerStats, ContainerSummary};
 
@@ -136,10 +136,7 @@ impl DockerClient for BollardDockerClient {
             .await
             .context("Failed to list containers")?;
 
-        Ok(containers
-            .into_iter()
-            .map(ContainerSummary::from)
-            .collect())
+        Ok(containers.into_iter().map(ContainerSummary::from).collect())
     }
 
     async fn get_container(&self, id: &str) -> Result<ContainerInfo> {
@@ -276,7 +273,9 @@ impl DockerClient for BollardDockerClient {
         let options = LogsOptions::<String> {
             stdout: true,
             stderr: true,
-            tail: tail.map(|t| t.to_string()).unwrap_or_else(|| "all".to_string()),
+            tail: tail
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| "all".to_string()),
             ..Default::default()
         };
 
@@ -287,9 +286,15 @@ impl DockerClient for BollardDockerClient {
             match result {
                 Ok(output) => {
                     let line = match output {
-                        LogOutput::StdOut { message } => String::from_utf8_lossy(&message).to_string(),
-                        LogOutput::StdErr { message } => String::from_utf8_lossy(&message).to_string(),
-                        LogOutput::Console { message } => String::from_utf8_lossy(&message).to_string(),
+                        LogOutput::StdOut { message } => {
+                            String::from_utf8_lossy(&message).to_string()
+                        }
+                        LogOutput::StdErr { message } => {
+                            String::from_utf8_lossy(&message).to_string()
+                        }
+                        LogOutput::Console { message } => {
+                            String::from_utf8_lossy(&message).to_string()
+                        }
                         LogOutput::StdIn { .. } => continue,
                     };
                     logs.push(line);
@@ -335,9 +340,7 @@ impl DockerClient for BollardDockerClient {
     }
 
     async fn remove_volume(&self, name: &str) -> Result<()> {
-        let options = bollard::volume::RemoveVolumeOptions {
-            force: false,
-        };
+        let options = bollard::volume::RemoveVolumeOptions { force: false };
         self.docker
             .remove_volume(name, Some(options))
             .await
@@ -397,7 +400,9 @@ pub mod mock {
                 id: id.clone(),
                 name,
                 status: state.clone(),
-                state: state.parse().unwrap_or(super::super::container::ContainerState::Unknown),
+                state: state
+                    .parse()
+                    .unwrap_or(super::super::container::ContainerState::Unknown),
                 image,
                 created: 0,
                 ports: vec![],
@@ -423,7 +428,10 @@ pub mod mock {
             if *self.should_fail.lock().unwrap() {
                 return Err(anyhow::anyhow!("Mock error: get_container failed"));
             }
-            Err(anyhow::anyhow!("Mock: get_container not implemented for {}", id))
+            Err(anyhow::anyhow!(
+                "Mock: get_container not implemented for {}",
+                id
+            ))
         }
 
         async fn get_container_stats(&self, _id: &str) -> Result<ContainerStats> {
@@ -495,7 +503,10 @@ pub mod mock {
             if *self.should_fail.lock().unwrap() {
                 return Err(anyhow::anyhow!("Mock error: get_container_logs failed"));
             }
-            Ok(vec!["Mock log line 1".to_string(), "Mock log line 2".to_string()])
+            Ok(vec![
+                "Mock log line 1".to_string(),
+                "Mock log line 2".to_string(),
+            ])
         }
 
         async fn inspect_image(&self, _id: &str) -> Result<bollard::models::ImageInspect> {

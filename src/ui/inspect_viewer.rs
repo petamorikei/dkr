@@ -1,10 +1,12 @@
 use super::utils::centered_rect;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
-    Frame,
+    widgets::{
+        Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    },
 };
 use serde_json;
 
@@ -20,9 +22,9 @@ impl InspectViewer {
     pub fn new(title: String, data: serde_json::Value) -> Self {
         let content = serde_json::to_string_pretty(&data)
             .unwrap_or_else(|e| format!("Failed to format JSON: {}", e));
-        
+
         let line_count = content.lines().count() as u16;
-        
+
         Self {
             title,
             content,
@@ -60,13 +62,14 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),     // Content
-            Constraint::Length(2),  // Footer
+            Constraint::Min(0),    // Content
+            Constraint::Length(2), // Footer
         ])
         .split(area);
 
     // Content with JSON
-    let lines: Vec<Line> = viewer.content
+    let lines: Vec<Line> = viewer
+        .content
         .lines()
         .skip(viewer.scroll_position as usize)
         .take(chunks[0].height as usize - 2) // Account for borders
@@ -86,15 +89,27 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
                     // String value (in array or standalone)
                     Line::styled(line, Style::default().fg(Color::Green))
                 }
-            } else if trimmed.starts_with('[') || trimmed.starts_with(']') ||
-                      trimmed.starts_with('{') || trimmed.starts_with('}') {
+            } else if trimmed.starts_with('[')
+                || trimmed.starts_with(']')
+                || trimmed.starts_with('{')
+                || trimmed.starts_with('}')
+            {
                 // Array or object brackets
                 Line::styled(line, Style::default().fg(Color::Yellow))
-            } else if trimmed == "true," || trimmed == "false," || trimmed == "null," ||
-                      trimmed == "true" || trimmed == "false" || trimmed == "null" {
+            } else if trimmed == "true,"
+                || trimmed == "false,"
+                || trimmed == "null,"
+                || trimmed == "true"
+                || trimmed == "false"
+                || trimmed == "null"
+            {
                 // Boolean or null values (exact match)
                 Line::styled(line, Style::default().fg(Color::Magenta))
-            } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-') {
+            } else if trimmed
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit() || c == '-')
+            {
                 // Number values
                 Line::styled(line, Style::default().fg(Color::Magenta))
             } else {
@@ -107,7 +122,7 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!(" {} ", viewer.title))
+                .title(format!(" {} ", viewer.title)),
         )
         .wrap(Wrap { trim: false });
 
@@ -118,7 +133,7 @@ pub fn draw_inspect_viewer(frame: &mut Frame, viewer: &InspectViewer, area: Rect
         .orientation(ScrollbarOrientation::VerticalRight)
         .begin_symbol(Some("↑"))
         .end_symbol(Some("↓"));
-    
+
     let mut scrollbar_state = ScrollbarState::default()
         .content_length(viewer.content.lines().count())
         .position(viewer.scroll_position as usize);
